@@ -1,0 +1,29 @@
+# Title is required
+title = "Create gist"
+
+# Description is optional
+description = "Create a gist on GitHub"
+
+# Verb is optional, will default to "GET" if absent
+verb = "POST"
+
+# URL is required
+url = "https://api.github.com/gists"
+
+# Body is optional
+body = '''
+{
+    "description": "Example of a gist",
+    "public": true,
+    "files": {
+        "README.md": {
+            "content": "This Gist was created with [fire](https://github.com/mantono/fire)"
+        }
+    }
+}
+'''
+
+# Headers are optional
+[headers]
+Accept = "application/vnd.github+json"
+Authorization = "token ${GITHUB_TOKEN}"
