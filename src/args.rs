@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 use termcolor::ColorChoice;
 
@@ -24,6 +26,25 @@ pub struct Args {
     /// to support colors.
     #[clap(short = 'C', long = "colors")]
     use_colors: Option<Colors>,
+
+    /// Raw response output
+    ///
+    /// Print the raw response, exactly as it is received
+    #[clap(short, long)]
+    pub raw: bool,
+
+    /// Request file
+    ///
+    /// Request template file which contains the request that should be executed
+    #[clap(value_parser)]
+    pub file: PathBuf,
+
+    /// Environment file(s)
+    ///
+    /// One or several files containing environment variables. These will override the environment
+    /// variables inherited from the operating system.
+    #[clap(short, long)]
+    pub env: Vec<PathBuf>,
 }
 
 impl Args {
