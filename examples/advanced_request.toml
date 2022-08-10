@@ -1,8 +1,4 @@
-# Title is required
-title = "Create gist"
-
-# Description is optional
-description = "Create a gist on GitHub"
+# Comments are allowed in file, in case you need to document your request
 
 # Verb is optional, will default to "GET" if absent
 verb = "POST"
