@@ -529,8 +529,10 @@ dependencies = [
  "log",
  "regex",
  "reqwest",
+ "serde",
  "termcolor",
  "toml",
+ "url",
 ]
 
 [[package]]
