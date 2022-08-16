@@ -13,6 +13,8 @@ use reqwest::blocking::{Request as RwReq, Response};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::{Body, Method, Url};
 use serde::Deserialize;
+use std::ascii::AsciiExt;
+use std::borrow::Borrow;
 use std::convert::Infallible;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -62,16 +64,15 @@ fn main() {
 #[derive(Deserialize, Debug)]
 struct HttpRequest {
     verb: Verb,
-    path: String,
-    version: HttpVersion,
+    url: String,
     proto: Protocol,
-    host: String,
     body: Option<String>,
     headers: HashMap<String, String>,
 }
 
 const USER_AGENT_KEY: &'static str = "user-agent";
 const CONTENT_LENGTH_KEY: &'static str = "content-length";
+const HOST_KEY: &'static str = "host";
 
 impl HttpRequest {
     pub fn verb(&self) -> Verb {
@@ -79,7 +80,12 @@ impl HttpRequest {
     }
 
     pub fn url(&self) -> Result<Url, url::ParseError> {
-        url::Url::parse(&format!("{}://{}{}", self.proto, self.host, self.path))
+        let url: String = self.url.to_ascii_lowercase();
+        if url.starts_with("http://") || url.starts_with("https://") {
+            Url::parse(&url)
+        } else {
+            Url::parse(&format!("{}://{}", &self.proto, &self.url))
+        }
     }
 
     pub fn headers(&self) -> HeaderMap<HeaderValue> {
@@ -123,7 +129,7 @@ impl FromStr for HttpRequest {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut lines = s.lines();
+        let mut lines = s.lines().filter(|line| !line.starts_with("#"));
         let first: &str = match lines.next() {
             Some(first) => first,
             None => return Err("File is empty".to_string()),
@@ -137,58 +143,24 @@ impl FromStr for HttpRequest {
             }
         };
 
-        let path: String =
+        let url: String =
             match parts.next() {
                 Some(p) => p.to_string(),
                 None => return Err(
-                    "Expected a path on first line one after the HTTP method, but none were found"
+                    "Expected a URL on first line one after the HTTP method, but none were found"
                         .to_string(),
                 ),
             };
 
-        let version: HttpVersion = match parts.next() {
-            Some(v) => HttpVersion::from_str(v)?,
-            None => {
-                return Err(
-                    "Expected a HTTP version on first line after the path, but none were found"
-                        .to_string(),
-                )
-            }
-        };
-
         let req = HttpRequest {
             verb,
-            path,
-            version,
+            url,
             proto: Protocol::default(),
-            host: "api.github.com".to_string(),
             body: None,
-            headers: HashMap::new(),
+            headers: HashMap::with_capacity(4),
         };
 
         Ok(req)
-    }
-}
-
-#[derive(Deserialize, Debug)]
-enum HttpVersion {
-    Http010,
-    Http011,
-    Http020,
-    Http030,
-}
-
-impl FromStr for HttpVersion {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "HTTP/1.0" => Ok(HttpVersion::Http010),
-            "HTTP/1.1" => Ok(HttpVersion::Http011),
-            "HTTP/2.0" => Ok(HttpVersion::Http020),
-            "HTTP/3.0" => Ok(HttpVersion::Http030),
-            _ => Err(format!("Invalid HTTP version '{}'", s)),
-        }
     }
 }
 

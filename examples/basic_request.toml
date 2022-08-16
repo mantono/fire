@@ -1,3 +1,2 @@
-GET /zen HTTP/3.0
-Host: api.github.com
-User-Agent: fire/0.1.0
+# Minimal example
+GET api.github.com/zen
