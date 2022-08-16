@@ -1,9 +1,3 @@
-POST https://api.github.com/zen
-Accept: application/vnd.github+json
-Authorization: token ${GITHUB_TOKEN}
+GET /zen HTTP/3.0
+Host: api.github.com
 User-Agent: fire/0.1.0
-
-{
-    "foo": "bar",
-    "x": 2
-}
