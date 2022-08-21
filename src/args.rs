@@ -27,11 +27,11 @@ pub struct Args {
     #[clap(short = 'C', long = "colors")]
     use_colors: Option<Colors>,
 
-    /// Raw response output
+    /// Show headers
     ///
-    /// Print the raw response, exactly as it is received
+    /// Print any headers received in the response
     #[clap(short, long)]
-    pub raw: bool,
+    pub headers: bool,
 
     /// Request file
     ///

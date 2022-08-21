@@ -1,13 +1,19 @@
 mod args;
 mod dbg;
 mod fmt;
+mod headers;
 mod logger;
+mod template;
+
+#[macro_use]
+extern crate lazy_static;
 
 use crate::args::Args;
 use crate::dbg::dbg_info;
 use crate::fmt::write;
 use crate::logger::setup_logging;
 use clap::Parser;
+use headers::Appendable;
 use log::Metadata;
 use reqwest::blocking::{Request as RwReq, Response};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
@@ -37,9 +43,8 @@ fn main() {
     // 2. Read enviroment variables from system environment and extra environments supplied via cli
     // 3. Apply template substitution
     // 4. Parse Validate  format of request
-    let mut request: HttpRequest = HttpRequest::from_str(&file).unwrap();
+    let request: HttpRequest = HttpRequest::from_str(&file).unwrap();
     // 5. Add user-agent header if missing
-    request.set_user_agent("fire/0.1.0");
     // 6. Add content-length header if missing
     // 7. Make (and optionally print) request
     let client = reqwest::blocking::Client::new();
@@ -58,7 +63,15 @@ fn main() {
     let headers = resp.headers().clone();
     let body = resp.text().unwrap();
 
-    println!("{:?} {}\n{:?}\n\n{:?}", version, status, headers, body);
+    println!("{:?} {}", version, status);
+    if args.headers {
+        for (k, v) in headers {
+            println!("{}: {:?}", k.unwrap(), v);
+        }
+    }
+    if !body.is_empty() {
+        println!("\n{}", body);
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -71,6 +84,7 @@ struct HttpRequest {
 }
 
 const USER_AGENT_KEY: &'static str = "user-agent";
+const USER_AGENT: &'static str = "fire/0.1.0";
 const CONTENT_LENGTH_KEY: &'static str = "content-length";
 const HOST_KEY: &'static str = "host";
 
@@ -92,29 +106,27 @@ impl HttpRequest {
         let h = self.headers.clone();
         let mut headers = HeaderMap::with_capacity(h.len());
         for (k, v) in h {
-            let k = HeaderName::from_str(&k).unwrap();
-            let v = HeaderValue::from_str(&v).unwrap();
+            let (k, v) = Self::header(&k, &v);
             headers.append(k, v);
         }
+
+        if let Some(host) = self.url().unwrap().host_str() {
+            headers.put_if_absent(HOST_KEY, host);
+        }
+
+        let body_size: String = self.body_size().to_string();
+        headers.put_if_absent(USER_AGENT_KEY, USER_AGENT);
+        headers.put_if_absent(CONTENT_LENGTH_KEY, body_size);
         headers
     }
 
-    pub fn set_user_agent(&mut self, agent: &str) -> &mut Self {
-        if !self.headers.contains_key(USER_AGENT_KEY) {
-            self.headers.insert(USER_AGENT_KEY.to_string(), agent.to_string());
-        }
-        self
+    fn header(key: &str, value: &str) -> (HeaderName, HeaderValue) {
+        let k = HeaderName::from_str(key).unwrap();
+        let v = HeaderValue::from_str(value).unwrap();
+        (k, v)
     }
 
-    pub fn set_content_length(&mut self) -> &mut Self {
-        if !self.headers.contains_key(CONTENT_LENGTH_KEY) {
-            let length: usize = self.body_size();
-            self.headers.insert(CONTENT_LENGTH_KEY.to_string(), length.to_string());
-        }
-        self
-    }
-
-    pub fn body_size(&self) -> usize {
+    fn body_size(&self) -> usize {
         match self.verb {
             Verb::Post | Verb::Put | Verb::Delete | Verb::Patch => match &self.body {
                 Some(b) => b.len(),

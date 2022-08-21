@@ -526,6 +526,7 @@ dependencies = [
  "built",
  "clap",
  "env_logger",
+ "lazy_static",
  "log",
  "regex",
  "reqwest",
