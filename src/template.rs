@@ -1,3 +1,4 @@
+use handlebars::Handlebars;
 use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
@@ -5,9 +6,9 @@ use std::{
     hash::Hash,
 };
 
-lazy_static! {
+/* lazy_static! {
     static ref TEMPLATE_KEY: Regex = Regex::new(r"(?<=\${)\w+(?=})").unwrap();
-}
+} */
 
 // Use this instead? https://crates.io/crates/handlebars
 pub fn substitution(
@@ -15,18 +16,13 @@ pub fn substitution(
     vars: Vec<HashMap<String, String>>,
 ) -> Result<String, SubstitutionError> {
     let vars: HashMap<String, String> = merge(vars);
-    let keys: HashSet<String> =
-        TEMPLATE_KEY.find_iter(&input).map(|m| m.as_str().to_string()).collect();
-    let map: HashMap<String, String> = match build_map(keys, vars) {
-        Ok(map) => map,
-        Err(key) => return Err(SubstitutionError::MissingValue(key)),
-    };
-    let output: String = map
-        .iter()
-        .fold(input, |content, (key, value)| TEMPLATE_KEY.replace_all(text, rep));
+    let mut reg = Handlebars::new();
+    reg.register_template_string("template", input).unwrap();
+    let output: String = reg.render("template", &vars).unwrap();
     Ok(output)
 }
 
+#[derive(Debug)]
 pub enum SubstitutionError {
     MissingValue(String),
 }

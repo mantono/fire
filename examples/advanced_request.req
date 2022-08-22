@@ -1,10 +1,10 @@
 # This request will create a public gist on GitHub
 # (lines starting with a "#" will always be ignored, unless it is a part of the body)
 # Protocol is optional, but if no protocol is specified, then it is assumed to be https
-POST api.github.com/zen
+POST api.github.com/gists
 Accept: application/vnd.github+json
 # Here is an example of a header that uses variable substitution
-Authorization: token ${GITHUB_TOKEN}
+Authorization: token {{GITHUB_TOKEN}}
 # A blank line indicates the end of the headers and the beginning of the body
 
 {

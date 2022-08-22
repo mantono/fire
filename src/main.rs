@@ -12,7 +12,9 @@ use crate::args::Args;
 use crate::dbg::dbg_info;
 use crate::fmt::write;
 use crate::logger::setup_logging;
+use crate::template::substitution;
 use clap::Parser;
+use handlebars::template::Parameter;
 use headers::Appendable;
 use log::Metadata;
 use reqwest::blocking::{Request as RwReq, Response};
@@ -42,8 +44,15 @@ fn main() {
     let file = std::fs::read_to_string(args.file).unwrap();
     // 2. Read enviroment variables from system environment and extra environments supplied via cli
     // 3. Apply template substitution
+    for x in std::env::vars() {
+        println!("{x:?}");
+    }
+    let env_vars: HashMap<String, String> = std::env::vars().into_iter().collect();
+    let values: Vec<HashMap<String, String>> = vec![env_vars];
+    let content: String = substitution(file, values).unwrap();
+    println!("{content}");
     // 4. Parse Validate  format of request
-    let request: HttpRequest = HttpRequest::from_str(&file).unwrap();
+    let request: HttpRequest = HttpRequest::from_str(&content).unwrap();
     // 5. Add user-agent header if missing
     // 6. Add content-length header if missing
     // 7. Make (and optionally print) request
@@ -80,7 +89,7 @@ struct HttpRequest {
     url: String,
     proto: Protocol,
     body: Option<String>,
-    headers: HashMap<String, String>,
+    headers: Vec<Header>,
 }
 
 const USER_AGENT_KEY: &'static str = "user-agent";
@@ -105,8 +114,8 @@ impl HttpRequest {
     pub fn headers(&self) -> HeaderMap<HeaderValue> {
         let h = self.headers.clone();
         let mut headers = HeaderMap::with_capacity(h.len());
-        for (k, v) in h {
-            let (k, v) = Self::header(&k, &v);
+        for Header { key, value } in h {
+            let (k, v) = Self::header(&key, &value);
             headers.append(k, v);
         }
 
@@ -164,15 +173,64 @@ impl FromStr for HttpRequest {
                 ),
             };
 
+        let headers: Vec<Header> = lines
+            .take_while(|line| !line.is_empty())
+            .map(|line| line.to_string())
+            .map(|line| Header::from_str(&line).unwrap())
+            .collect();
+
         let req = HttpRequest {
             verb,
             url,
             proto: Protocol::default(),
             body: None,
-            headers: HashMap::with_capacity(4),
+            headers,
         };
 
         Ok(req)
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Header {
+    key: String,
+    value: String,
+}
+
+impl Header {
+    pub fn new(key: String, value: String) -> Result<Header, ParseHeaderError> {
+        Ok(Header { key, value })
+    }
+
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+#[derive(Debug)]
+pub enum ParseHeaderError {
+    InvalidEntry(String),
+    InvalidKey(String),
+    InvalidValue(String),
+}
+
+impl FromStr for Header {
+    type Err = ParseHeaderError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.splitn(2, ':').collect();
+        match parts.len() {
+            2 => {
+                let key: String = parts[0].to_string();
+                let value: String = parts[1].to_string();
+                Header::new(key, value)
+            }
+            _ => Err(ParseHeaderError::InvalidEntry(s.to_string())),
+        }
     }
 }
 
