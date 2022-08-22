@@ -3,6 +3,7 @@ mod dbg;
 mod fmt;
 mod headers;
 mod logger;
+mod prop;
 mod template;
 
 #[macro_use]
@@ -12,11 +13,13 @@ use crate::args::Args;
 use crate::dbg::dbg_info;
 use crate::fmt::write;
 use crate::logger::setup_logging;
+use crate::prop::Property;
 use crate::template::substitution;
 use clap::Parser;
 use handlebars::template::Parameter;
 use headers::Appendable;
 use log::Metadata;
+use regex::Regex;
 use reqwest::blocking::{Request as RwReq, Response};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::{Body, Method, Url};
@@ -25,6 +28,7 @@ use std::ascii::AsciiExt;
 use std::borrow::Borrow;
 use std::convert::Infallible;
 use std::fmt::Display;
+use std::slice::SliceIndex;
 use std::str::FromStr;
 use std::{collections::HashMap, process};
 use termcolor::{Color, StandardStream};
@@ -47,22 +51,48 @@ fn main() {
     for x in std::env::vars() {
         println!("{x:?}");
     }
-    let env_vars: HashMap<String, String> = std::env::vars().into_iter().collect();
-    let values: Vec<HashMap<String, String>> = vec![env_vars];
-    let content: String = substitution(file, values).unwrap();
-    println!("{content}");
-    // 4. Parse Validate  format of request
+
+    let mut env_vars: Vec<Property> = std::env::vars()
+        .into_iter()
+        .map(Property::try_from)
+        .filter_map(|p| p.ok())
+        .collect();
+
+    let props: Vec<Property> = args
+        .env
+        .into_iter()
+        .map(|file| prop::from_file(&file).unwrap())
+        .flatten()
+        .collect();
+
+    env_vars.extend(props);
+
+    println!("{:?}", env_vars);
+
+    let content: String = substitution(file, env_vars).unwrap();
+    // 4. Parse Validate format of request
     let request: HttpRequest = HttpRequest::from_str(&content).unwrap();
     // 5. Add user-agent header if missing
     // 6. Add content-length header if missing
     // 7. Make (and optionally print) request
     let client = reqwest::blocking::Client::new();
 
+    println!("{} {}", request.verb(), request.url().unwrap());
+    if let Some(body) = request.body() {
+        println!("{body}");
+    }
+
     let req = client
         .request(request.verb().into(), request.url().unwrap())
-        .headers(request.headers())
-        .build()
-        .unwrap();
+        .headers(request.headers());
+    //.build()
+    //.unwrap();
+
+    let req = if request.body_size() != 0 {
+        req.body(request.body.unwrap()).build().unwrap()
+    } else {
+        req.build().unwrap()
+    };
 
     let resp: Response = client.execute(req).unwrap();
     // 8. Print response if successful, or error, if not
@@ -87,7 +117,6 @@ fn main() {
 struct HttpRequest {
     verb: Verb,
     url: String,
-    proto: Protocol,
     body: Option<String>,
     headers: Vec<Header>,
 }
@@ -107,7 +136,7 @@ impl HttpRequest {
         if url.starts_with("http://") || url.starts_with("https://") {
             Url::parse(&url)
         } else {
-            Url::parse(&format!("{}://{}", &self.proto, &self.url))
+            Url::parse(&format!("https://{}", &self.url))
         }
     }
 
@@ -135,6 +164,14 @@ impl HttpRequest {
         (k, v)
     }
 
+    pub fn has_body(&self) -> bool {
+        self.body_size() != 0
+    }
+
+    pub fn body(&self) -> &Option<String> {
+        &self.body
+    }
+
     fn body_size(&self) -> usize {
         match self.verb {
             Verb::Post | Verb::Put | Verb::Delete | Verb::Patch => match &self.body {
@@ -146,32 +183,49 @@ impl HttpRequest {
     }
 }
 
+lazy_static! {
+    static ref DELIMITER: Regex = Regex::new(r"\n\s*\n").unwrap();
+    static ref COMMENT: Regex = Regex::new(r"^[[:blank:]]*#").unwrap();
+}
+
+fn verb_and_url(line: &str) -> Result<(Verb, String), String> {
+    let mut parts = line.split_ascii_whitespace();
+    let verb: Verb = match parts.next() {
+        Some(v) => Verb::from_str(v)?,
+        None => return Err("Expected a HTTP method on first line, but none were found".to_string()),
+    };
+
+    let url: String = match parts.next() {
+        Some(p) => p.to_string(),
+        None => {
+            return Err(
+                "Expected a URL on first line one after the HTTP method, but none were found"
+                    .to_string(),
+            )
+        }
+    };
+
+    Ok((verb, url))
+}
+
 impl FromStr for HttpRequest {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut lines = s.lines().filter(|line| !line.starts_with("#"));
-        let first: &str = match lines.next() {
+        // Divide the file content into two parts, top and bottom
+        let parts: Vec<&str> = DELIMITER.splitn(s, 2).collect();
+        // Top contains verb, url and headers
+        let top: &str = parts[0];
+        // Bottom contains an optional body
+        let bottom: Option<&&str> = parts.get(1);
+
+        let mut lines = top.lines().filter(|line| !COMMENT.is_match(line));
+        let first_line: &str = match lines.next() {
             Some(first) => first,
             None => return Err("File is empty".to_string()),
         };
-        let mut parts = first.split_ascii_whitespace();
 
-        let verb: Verb = match parts.next() {
-            Some(v) => Verb::from_str(v)?,
-            None => {
-                return Err("Expected a HTTP method on first line, but none were found".to_string())
-            }
-        };
-
-        let url: String =
-            match parts.next() {
-                Some(p) => p.to_string(),
-                None => return Err(
-                    "Expected a URL on first line one after the HTTP method, but none were found"
-                        .to_string(),
-                ),
-            };
+        let (verb, url) = verb_and_url(first_line)?;
 
         let headers: Vec<Header> = lines
             .take_while(|line| !line.is_empty())
@@ -179,11 +233,12 @@ impl FromStr for HttpRequest {
             .map(|line| Header::from_str(&line).unwrap())
             .collect();
 
+        let body: Option<String> = bottom.map(|v| v.to_owned().to_owned());
+
         let req = HttpRequest {
             verb,
             url,
-            proto: Protocol::default(),
-            body: None,
+            body,
             headers,
         };
 
@@ -234,6 +289,14 @@ impl FromStr for Header {
     }
 }
 
+impl TryFrom<(String, String)> for Header {
+    type Error = ParseHeaderError;
+
+    fn try_from(value: (String, String)) -> Result<Self, Self::Error> {
+        Header::new(value.0, value.1)
+    }
+}
+
 #[derive(Deserialize, Debug, Clone, Copy)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Verb {
@@ -261,6 +324,24 @@ impl Verb {
             Verb::Trace => BodyStatus::Forbidden,
             Verb::Patch => BodyStatus::Permitted,
         }
+    }
+}
+
+impl Display for Verb {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s: &str = match self {
+            Verb::Get => "GET",
+            Verb::Head => "HEAD",
+            Verb::Post => "POST",
+            Verb::Put => "PUT",
+            Verb::Delete => "DELETE",
+            Verb::Connect => "CONNECT",
+            Verb::Options => "OPTIONS",
+            Verb::Trace => "TRACE",
+            Verb::Patch => "PATCH",
+        };
+
+        f.write_str(s)
     }
 }
 
@@ -301,27 +382,6 @@ impl From<Verb> for reqwest::Method {
             Verb::Options => Self::OPTIONS,
             Verb::Trace => Self::TRACE,
             Verb::Patch => Self::PATCH,
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, Deserialize)]
-enum Protocol {
-    Http,
-    Https,
-}
-
-impl Default for Protocol {
-    fn default() -> Self {
-        Self::Https
-    }
-}
-
-impl Display for Protocol {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Protocol::Http => f.write_str("http"),
-            Protocol::Https => f.write_str("https"),
         }
     }
 }

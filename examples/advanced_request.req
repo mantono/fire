@@ -12,7 +12,7 @@ Authorization: token {{GITHUB_TOKEN}}
   "public": true,
   "files": {
     "README.md": {
-      "content": "This Gist was created with [fire](https://github.com/mantono/fire)"
+      "content": "This Gist was created with [fire](https://github.com/mantono/fire) ({{CONTENT}})"
     }
   }
 }
