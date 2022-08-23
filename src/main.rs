@@ -1,7 +1,7 @@
 mod args;
 mod dbg;
-mod fmt;
 mod headers;
+mod io;
 mod logger;
 mod prop;
 mod template;
@@ -11,7 +11,11 @@ extern crate lazy_static;
 
 use crate::args::Args;
 use crate::dbg::dbg_info;
-use crate::fmt::write;
+use crate::io::write;
+use crate::io::write_color;
+use crate::io::writeln;
+use crate::io::writeln_color;
+use crate::io::writeln_spec;
 use crate::logger::setup_logging;
 use crate::prop::Property;
 use crate::template::substitution;
@@ -22,25 +26,24 @@ use log::Metadata;
 use regex::Regex;
 use reqwest::blocking::{Request as RwReq, Response};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-use reqwest::{Body, Method, Url};
+use reqwest::{Body, Method, StatusCode, Url};
 use serde::Deserialize;
-use std::ascii::AsciiExt;
-use std::borrow::Borrow;
-use std::convert::Infallible;
 use std::fmt::Display;
-use std::slice::SliceIndex;
 use std::str::FromStr;
+use std::time::Duration;
+use std::time::Instant;
 use std::{collections::HashMap, process};
-use termcolor::{Color, StandardStream};
+use termcolor::{Color, ColorSpec, StandardStream};
 
 fn main() {
     let args: Args = Args::parse();
     setup_logging(args.verbosity_level);
     log::debug!("Config: {:?}", args);
-    log::info!("This is a log message");
+
+    let mut stdout = StandardStream::stdout(args.use_colors());
 
     if args.print_dbg {
-        println!("{}", dbg_info());
+        write(&mut stdout, &dbg_info());
         process::exit(0);
     }
 
@@ -48,9 +51,6 @@ fn main() {
     let file = std::fs::read_to_string(args.file).unwrap();
     // 2. Read enviroment variables from system environment and extra environments supplied via cli
     // 3. Apply template substitution
-    for x in std::env::vars() {
-        println!("{x:?}");
-    }
 
     let mut env_vars: Vec<Property> = std::env::vars()
         .into_iter()
@@ -67,9 +67,11 @@ fn main() {
 
     env_vars.extend(props);
 
-    println!("{:?}", env_vars);
+    log::debug!("Received properties {:?}", env_vars);
 
     let content: String = substitution(file, env_vars).unwrap();
+    log::debug!("Content with template substitution done:\n{}", content);
+
     // 4. Parse Validate format of request
     let request: HttpRequest = HttpRequest::from_str(&content).unwrap();
     // 5. Add user-agent header if missing
@@ -77,16 +79,15 @@ fn main() {
     // 7. Make (and optionally print) request
     let client = reqwest::blocking::Client::new();
 
-    println!("{} {}", request.verb(), request.url().unwrap());
+    log::info!("{} {}", request.verb(), request.url().unwrap());
+
     if let Some(body) = request.body() {
-        println!("{body}");
+        log::info!("{body}");
     }
 
     let req = client
         .request(request.verb().into(), request.url().unwrap())
         .headers(request.headers());
-    //.build()
-    //.unwrap();
 
     let req = if request.body_size() != 0 {
         req.body(request.body.unwrap()).build().unwrap()
@@ -94,7 +95,12 @@ fn main() {
         req.build().unwrap()
     };
 
-    let resp: Response = client.execute(req).unwrap();
+    let start: Instant = Instant::now();
+    let resp: Result<Response, reqwest::Error> = client.execute(req);
+    let end: Instant = Instant::now();
+    let resp: Response = resp.unwrap();
+
+    let duration: Duration = end.duration_since(start);
     // 8. Print response if successful, or error, if not
 
     let version = resp.version();
@@ -102,14 +108,41 @@ fn main() {
     let headers = resp.headers().clone();
     let body = resp.text().unwrap();
 
-    println!("{:?} {}", version, status);
+    let status_color: Option<Color> = match status.as_u16() {
+        200..=299 => Some(Color::Green),
+        400..=499 => Some(Color::Yellow),
+        500..=599 => Some(Color::Red),
+        _ => None,
+    };
+
+    let (body_len, unit): (usize, String) = if body.len() >= 1024 {
+        ((body.len() / 1024), String::from("kb"))
+    } else {
+        (body.len(), String::from("b"))
+    };
+
+    let version: String = format!("{version:?} ");
+    write(&mut stdout, &version);
+
+    let status: String = status.to_string();
+    write_color(&mut stdout, &status, status_color);
+
+    let outcome: String = format!(" {} ms {} {}", duration.as_millis(), body_len, unit);
+    writeln(&mut stdout, &outcome);
+
+    let border_len: usize = version.len() + status.len() + outcome.len();
+    let border = "━".repeat(border_len);
+    writeln(&mut stdout, &border);
+
     if args.headers {
+        let mut spec = ColorSpec::new();
+        spec.set_dimmed(true);
         for (k, v) in headers {
-            println!("{}: {:?}", k.unwrap(), v);
+            writeln_spec(&mut stdout, &format!("{}: {:?}", k.unwrap(), v), &spec);
         }
     }
     if !body.is_empty() {
-        println!("\n{}", body);
+        writeln(&mut stdout, &format!("\n{body}"));
     }
 }
 

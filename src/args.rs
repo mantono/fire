@@ -20,17 +20,24 @@ pub struct Args {
     #[clap(short = 'D', long = "debug")]
     pub print_dbg: bool,
 
-    /// Enable/disable colors
+    /// Enable colors
     ///
-    /// Enable or disable output with colors. By default colors will be used if the terminal seems
+    /// Enable output with colors. By default colors will be used if the terminal seems
     /// to support colors.
-    #[clap(short = 'C', long = "colors")]
-    use_colors: Option<Colors>,
+    #[clap(short = 'c', long = "colors")]
+    enable_colors: bool,
+
+    /// Disable colors
+    ///
+    /// Disable output with colors. By default colors will be used if the terminal seems
+    /// to support colors.
+    #[clap(short = 'C', long = "no-colors")]
+    disable_colors: bool,
 
     /// Show headers
     ///
     /// Print any headers received in the response
-    #[clap(short, long)]
+    #[clap(short = 'H', long)]
     pub headers: bool,
 
     /// Request file
@@ -49,35 +56,13 @@ pub struct Args {
 
 impl Args {
     pub fn use_colors(&self) -> ColorChoice {
-        match self.use_colors {
-            None => ColorChoice::Auto,
-            Some(Colors::Always) => ColorChoice::Always,
-            Some(Colors::AlwaysAnsi) => ColorChoice::AlwaysAnsi,
-            Some(Colors::Auto) => ColorChoice::Auto,
-            Some(Colors::Never) => ColorChoice::Never,
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-enum Colors {
-    Always,
-    AlwaysAnsi,
-    Auto,
-    Never,
-}
-
-impl std::str::FromStr for Colors {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_lowercase();
-        match s.as_str() {
-            "always" => Ok(Colors::Always),
-            "ansi" => Ok(Colors::AlwaysAnsi),
-            "auto" => Ok(Colors::Auto),
-            "never" => Ok(Colors::Never),
-            _ => Err("Invalid color choice"),
+        match (self.enable_colors, self.disable_colors) {
+            (true, false) => ColorChoice::Always,
+            (false, true) => ColorChoice::Never,
+            (false, false) => ColorChoice::Auto,
+            (true, true) => {
+                panic!("Flags --colors (-c) and --no-colors (-C) are mutually exclusive")
+            }
         }
     }
 }
