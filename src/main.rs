@@ -27,6 +27,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::process;
+use std::process::ExitCode;
 use std::process::Termination;
 use std::str::FromStr;
 use std::time::Duration;
@@ -210,7 +211,16 @@ impl Display for FireError {
 
 impl Termination for FireError {
     fn report(self) -> process::ExitCode {
-        todo!()
+        match self {
+            FireError::Timeout(_) => ExitCode::from(3),
+            FireError::Connection(_) => ExitCode::from(4),
+            FireError::FileNotFound(_) => ExitCode::from(5),
+            FireError::NoReadPermission(_) => ExitCode::from(6),
+            FireError::NotAFile(_) => ExitCode::from(7),
+            FireError::GenericIO(_) => ExitCode::from(8),
+            FireError::Template(_) => ExitCode::from(9),
+            FireError::Other(_) => ExitCode::from(1),
+        }
     }
 }
 
