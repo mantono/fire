@@ -164,12 +164,13 @@ fn main() -> Result<(), FireError> {
     if args.headers {
         let mut spec = ColorSpec::new();
         spec.set_dimmed(true);
-        for (k, v) in headers {
+        for (k, v) in headers.clone() {
             writeln_spec(&mut stdout, &format!("{}: {:?}", k.unwrap(), v), &spec);
         }
     }
     if !body.is_empty() {
-        writeln(&mut stdout, &format!("\n{body}"));
+        let content_type = headers.get("content-type").map(|ct| ct.to_str().ok()).flatten();
+        io::write_body(&mut stdout, content_type, body);
     }
 
     Ok(())

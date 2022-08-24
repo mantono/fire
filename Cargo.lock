@@ -255,7 +255,7 @@ dependencies = [
  "log",
  "regex",
  "reqwest",
- "serde",
+ "serde_json",
  "termcolor",
  "url",
 ]

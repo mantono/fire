@@ -5,11 +5,10 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Url,
 };
-use serde::Deserialize;
 
 use crate::headers::Appendable;
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug)]
 pub struct HttpRequest {
     verb: Verb,
     url: String,
@@ -142,7 +141,7 @@ impl FromStr for HttpRequest {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub struct Header {
     key: String,
     value: String,
@@ -193,8 +192,7 @@ impl TryFrom<(String, String)> for Header {
     }
 }
 
-#[derive(Deserialize, Debug, Clone, Copy)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Debug, Clone, Copy)]
 pub enum Verb {
     Get,
     Head,
