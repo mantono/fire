@@ -16,28 +16,25 @@ use crate::http::HttpRequest;
 use crate::io::write;
 use crate::io::write_color;
 use crate::io::writeln;
-use crate::io::writeln_color;
 use crate::io::writeln_spec;
 use crate::logger::setup_logging;
 use crate::prop::Property;
 use crate::template::substitution;
 use clap::Parser;
-use handlebars::template::Parameter;
-use headers::Appendable;
-use log::Metadata;
-use regex::Regex;
-use reqwest::blocking::{Request as RwReq, Response};
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-use reqwest::{Body, Method, StatusCode, Url};
-use serde::Deserialize;
+use reqwest::blocking::Response;
+use reqwest::Url;
+use std::fmt::Debug;
 use std::fmt::Display;
+use std::path::PathBuf;
+use std::process;
+use std::process::Termination;
 use std::str::FromStr;
 use std::time::Duration;
 use std::time::Instant;
-use std::{collections::HashMap, process};
+use template::SubstitutionError;
 use termcolor::{Color, ColorSpec, StandardStream};
 
-fn main() {
+fn main() -> Result<(), FireError> {
     let args: Args = Args::parse();
     setup_logging(args.verbosity_level);
     log::debug!("Config: {:?}", args);
@@ -50,7 +47,20 @@ fn main() {
     }
 
     // 1. Read file content
-    let file = std::fs::read_to_string(args.file).unwrap();
+    let file = match std::fs::read_to_string(args.file()) {
+        Ok(file) => file,
+        Err(e) => {
+            return match e.kind() {
+                std::io::ErrorKind::NotFound => {
+                    Err(FireError::FileNotFound(args.file().to_path_buf()))
+                }
+                std::io::ErrorKind::PermissionDenied => {
+                    Err(FireError::NoReadPermission(args.file().to_path_buf()))
+                }
+                _ => Err(FireError::GenericIO(e.to_string())),
+            }
+        }
+    };
     // 2. Read enviroment variables from system environment and extra environments supplied via cli
     // 3. Apply template substitution
 
@@ -61,7 +71,7 @@ fn main() {
         .collect();
 
     let props: Vec<Property> = args
-        .env
+        .env()
         .into_iter()
         .map(|file| prop::from_file(&file).unwrap())
         .flatten()
@@ -71,7 +81,7 @@ fn main() {
 
     log::debug!("Received properties {:?}", env_vars);
 
-    let content: String = substitution(file, env_vars).unwrap();
+    let content: String = substitution(file, env_vars)?;
     log::debug!("Content with template substitution done:\n{}", content);
 
     // 4. Parse Validate format of request
@@ -89,6 +99,7 @@ fn main() {
 
     let req = client
         .request(request.verb().into(), request.url().unwrap())
+        .timeout(args.timeout())
         .headers(request.headers());
 
     let req = match request.body() {
@@ -99,7 +110,18 @@ fn main() {
     let start: Instant = Instant::now();
     let resp: Result<Response, reqwest::Error> = client.execute(req);
     let end: Instant = Instant::now();
-    let resp: Response = resp.unwrap();
+    let resp: Response = match resp {
+        Ok(response) => response,
+        Err(e) => {
+            if e.is_timeout() {
+                return Err(FireError::Timeout(e.url().unwrap().clone()));
+            } else if e.is_connect() {
+                return Err(FireError::Connection(e.url().unwrap().clone()));
+            } else {
+                return Err(FireError::Other(e.to_string()));
+            }
+        }
+    };
 
     let duration: Duration = end.duration_since(start);
     // 8. Print response if successful, or error, if not
@@ -107,7 +129,10 @@ fn main() {
     let version = resp.version();
     let status = resp.status();
     let headers = resp.headers().clone();
-    let body = resp.text().unwrap();
+    let body = match resp.text() {
+        Ok(body) => body,
+        Err(e) => return Err(FireError::Other(e.to_string())),
+    };
 
     let status_color: Option<Color> = match status.as_u16() {
         200..=299 => Some(Color::Green),
@@ -144,5 +169,55 @@ fn main() {
     }
     if !body.is_empty() {
         writeln(&mut stdout, &format!("\n{body}"));
+    }
+
+    Ok(())
+}
+
+enum FireError {
+    Timeout(Url),
+    Connection(Url),
+    FileNotFound(PathBuf),
+    NoReadPermission(PathBuf),
+    NotAFile(PathBuf),
+    GenericIO(String),
+    Template(String),
+    Other(String),
+}
+
+impl Debug for FireError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self, f)
+    }
+}
+
+impl Display for FireError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let msg: String = match &self {
+            FireError::Timeout(url) => format!("Request to {url} timed out"),
+            FireError::Connection(url) => format!("Unable to connect to URL {url}, verify that the URL is correct and that you have a working internet connection"),
+            &FireError::FileNotFound(path) => format!("Could not find file {:?}", path.clone()),
+            FireError::GenericIO(err) => format!("IO error: {err}"),
+            FireError::NotAFile(path) => format!("{:?} exists but it is not a file", path.clone()),
+            FireError::NoReadPermission(path) => format!("No permission to read file {:?}", path.clone()),
+            FireError::Template(msg) => format!("Unable to render request from template. {msg}"),
+            FireError::Other(err) => format!("Error: {err}"),
+        };
+
+        f.write_str(&msg)
+    }
+}
+
+impl Termination for FireError {
+    fn report(self) -> process::ExitCode {
+        todo!()
+    }
+}
+
+impl From<SubstitutionError> for FireError {
+    fn from(e: SubstitutionError) -> Self {
+        match e {
+            SubstitutionError::MissingValue(err) => FireError::Template(err),
+        }
     }
 }

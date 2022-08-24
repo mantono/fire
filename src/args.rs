@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use clap::Parser;
 use termcolor::ColorChoice;
@@ -44,14 +44,20 @@ pub struct Args {
     ///
     /// Request template file which contains the request that should be executed
     #[clap(value_parser)]
-    pub file: PathBuf,
+    file: PathBuf,
 
     /// Environment file(s)
     ///
     /// One or several files containing environment variables. These will override the environment
     /// variables inherited from the operating system.
     #[clap(short, long)]
-    pub env: Vec<PathBuf>,
+    env: Vec<PathBuf>,
+
+    /// Request timeout
+    ///
+    /// Max time to wait, in seconds, before request times out
+    #[clap(short = 'T', long = "timeout", default_value = "30")]
+    timeout: usize,
 }
 
 impl Args {
@@ -64,5 +70,17 @@ impl Args {
                 panic!("Flags --colors (-c) and --no-colors (-C) are mutually exclusive")
             }
         }
+    }
+
+    pub fn file(&self) -> &std::path::Path {
+        &self.file
+    }
+
+    pub fn timeout(&self) -> Duration {
+        Duration::from_secs(self.timeout as u64)
+    }
+
+    pub fn env(&self) -> Vec<PathBuf> {
+        self.env.clone()
     }
 }

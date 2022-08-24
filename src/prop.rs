@@ -21,7 +21,7 @@ impl Property {
 }
 
 pub fn from_file(path: &Path) -> Result<Vec<Property>, ParsePropertyError> {
-    let content: String = std::fs::read_to_string(path).unwrap();
+    let content: String = std::fs::read_to_string(path)?;
     let props: Vec<Property> = content
         .lines()
         .into_iter()
@@ -33,9 +33,16 @@ pub fn from_file(path: &Path) -> Result<Vec<Property>, ParsePropertyError> {
 
 #[derive(Debug)]
 pub enum ParsePropertyError {
-    InvalidEntry(String),
-    InvalidKey(String),
-    InvalidValue(String),
+    Entry(String),
+    Key(String),
+    Value(String),
+    File(String),
+}
+
+impl From<std::io::Error> for ParsePropertyError {
+    fn from(e: std::io::Error) -> Self {
+        ParsePropertyError::File(e.to_string())
+    }
 }
 
 const DELIMITER: char = '=';
@@ -46,7 +53,7 @@ impl std::str::FromStr for Property {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.split_once(DELIMITER) {
             Some((key, value)) => Property::new(normalize(key), normalize(value)),
-            None => Err(ParsePropertyError::InvalidEntry(s.to_string())),
+            None => Err(ParsePropertyError::Entry(s.to_string())),
         }
     }
 }

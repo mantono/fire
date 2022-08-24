@@ -6,9 +6,12 @@ use crate::prop::Property;
 pub fn substitution(input: String, vars: Vec<Property>) -> Result<String, SubstitutionError> {
     let vars: HashMap<String, String> = merge(vars);
     let mut reg = Handlebars::new();
+    reg.set_strict_mode(true);
     reg.register_template_string("template", input).unwrap();
-    let output: String = reg.render("template", &vars).unwrap();
-    Ok(output)
+    match reg.render("template", &vars) {
+        Ok(output) => Ok(output),
+        Err(e) => Err(SubstitutionError::MissingValue(e.desc)),
+    }
 }
 
 #[derive(Debug)]
