@@ -3,6 +3,8 @@
 ##### Execute a request
 `fire my_request.req`
 
+See examples directory for how to structure request files.
+
 ##### Execute a request with custom environment variables
 `fire my_request.req -e environment.env`
 
