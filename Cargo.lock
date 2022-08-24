@@ -243,6 +243,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "fire"
+version = "0.1.0"
+dependencies = [
+ "built",
+ "clap",
+ "dotenvy",
+ "env_logger",
+ "handlebars",
+ "lazy_static",
+ "log",
+ "regex",
+ "reqwest",
+ "serde",
+ "termcolor",
+ "url",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -619,24 +637,6 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys",
-]
-
-[[package]]
-name = "my_crate"
-version = "0.1.0"
-dependencies = [
- "built",
- "clap",
- "dotenvy",
- "env_logger",
- "handlebars",
- "lazy_static",
- "log",
- "regex",
- "reqwest",
- "serde",
- "termcolor",
- "url",
 ]
 
 [[package]]
