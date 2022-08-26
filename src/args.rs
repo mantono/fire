@@ -40,12 +40,6 @@ pub struct Args {
     #[clap(short = 'H', long)]
     pub headers: bool,
 
-    /// Request file
-    ///
-    /// Request template file which contains the request that should be executed
-    #[clap(value_parser)]
-    file: PathBuf,
-
     /// Environment file(s)
     ///
     /// One or several files containing environment variables. These will override the environment
@@ -58,6 +52,12 @@ pub struct Args {
     /// Max time to wait, in seconds, before request times out
     #[clap(short = 'T', long = "timeout", default_value = "30")]
     timeout: usize,
+
+    /// Request file
+    ///
+    /// Request template file which contains the request that should be executed
+    #[clap(value_parser)]
+    file: PathBuf,
 }
 
 impl Args {
