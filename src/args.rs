@@ -3,6 +3,8 @@ use std::{path::PathBuf, time::Duration};
 use clap::Parser;
 use termcolor::ColorChoice;
 
+use crate::prop::{self, ParsePropertyError, Property};
+
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
@@ -47,6 +49,16 @@ pub struct Args {
     #[clap(short, long)]
     env: Vec<PathBuf>,
 
+    /// Set environment variable
+    ///
+    /// Override or set a specific environment variable in KEY=VALUE format. Would have same effect
+    /// as setting this in an environment file provided to the --env command, this is just more
+    /// convenient when a variable should be changed often. A value given to this flag will take
+    /// precendence over an environment variable from the system and an environment variable found
+    /// in and environment variables file.
+    #[clap(short = 'E', long = "variable")]
+    env_vars: Vec<Property>,
+
     /// Request timeout
     ///
     /// Max time to wait, in seconds, before request times out
@@ -80,7 +92,29 @@ impl Args {
         Duration::from_secs(self.timeout as u64)
     }
 
-    pub fn env(&self) -> Vec<PathBuf> {
-        self.env.clone()
+    pub fn env(&self) -> Result<Vec<Property>, ParsePropertyError> {
+        let sys_envs: Vec<Property> = std::env::vars()
+            .into_iter()
+            .map(Property::try_from)
+            .filter_map(|p| p.ok())
+            .collect();
+
+        let file_envs: Vec<Property> = self
+            .env
+            .clone()
+            .into_iter()
+            .map(|file| prop::from_file(&file).unwrap())
+            .flatten()
+            .collect();
+
+        let alloc_size: usize = sys_envs.len() + file_envs.len() + self.env_vars.len();
+
+        let mut props: Vec<Property> = Vec::with_capacity(alloc_size);
+
+        props.extend(sys_envs);
+        props.extend(file_envs);
+        props.extend(self.env_vars.clone());
+
+        Ok(props)
     }
 }

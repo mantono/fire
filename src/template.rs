@@ -21,7 +21,6 @@ pub enum SubstitutionError {
 
 fn merge(maps: Vec<Property>) -> HashMap<String, String> {
     maps.into_iter()
-        .rev()
         .map(|prop| (prop.key().to_string(), prop.value().to_string()))
         .collect()
 }

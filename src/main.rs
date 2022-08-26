@@ -64,25 +64,11 @@ fn main() -> Result<(), FireError> {
     };
     // 2. Read enviroment variables from system environment and extra environments supplied via cli
     // 3. Apply template substitution
+    let props: Vec<Property> = args.env().expect("Unable to load env vars");
 
-    let mut env_vars: Vec<Property> = std::env::vars()
-        .into_iter()
-        .map(Property::try_from)
-        .filter_map(|p| p.ok())
-        .collect();
+    log::debug!("Received properties {:?}", props);
 
-    let props: Vec<Property> = args
-        .env()
-        .into_iter()
-        .map(|file| prop::from_file(&file).unwrap())
-        .flatten()
-        .collect();
-
-    env_vars.extend(props);
-
-    log::debug!("Received properties {:?}", env_vars);
-
-    let content: String = substitution(file, env_vars)?;
+    let content: String = substitution(file, props)?;
     log::debug!("Content with template substitution done:\n{}", content);
 
     // 4. Parse Validate format of request

@@ -1,4 +1,5 @@
-use std::{path::Path, str::FromStr};
+use std::fmt::Write;
+use std::{fmt::Display, path::Path, str::FromStr};
 
 #[derive(Debug, Clone)]
 pub struct Property {
@@ -44,6 +45,19 @@ impl From<std::io::Error> for ParsePropertyError {
         ParsePropertyError::File(e.to_string())
     }
 }
+
+impl Display for ParsePropertyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParsePropertyError::Entry(entry) => write!(f, "Invalid entry: {}", entry),
+            ParsePropertyError::Key(key) => write!(f, "Invalid key: {}", key),
+            ParsePropertyError::Value(value) => write!(f, "Invalid value: {}", value),
+            ParsePropertyError::File(file) => write!(f, "Invalid value: {}", file),
+        }
+    }
+}
+
+impl std::error::Error for ParsePropertyError {}
 
 const DELIMITER: char = '=';
 
