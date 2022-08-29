@@ -175,8 +175,8 @@ impl FromStr for Header {
         let parts: Vec<&str> = s.splitn(2, ':').collect();
         match parts.len() {
             2 => {
-                let key: String = parts[0].to_string();
-                let value: String = parts[1].to_string();
+                let key: String = parts[0].trim().to_string();
+                let value: String = parts[1].trim().to_string();
                 Header::new(key, value)
             }
             _ => Err(ParseHeaderError::InvalidEntry(s.to_string())),
