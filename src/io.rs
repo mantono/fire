@@ -32,14 +32,16 @@ pub fn writeln_spec(stream: &mut StandardStream, content: &str, spec: &ColorSpec
 }
 
 pub fn write_body(stream: &mut StandardStream, content_type: Option<&str>, body: String) {
-    match content_type {
-        Some("application/json") => {
-            let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-            let body: String = serde_json::to_string_pretty(&json).unwrap();
-            writeln(stream, &format!("\n{body}"));
+    let body: String = match content_type {
+        Some(content_type) => {
+            if content_type.starts_with("application/json") {
+                let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+                serde_json::to_string_pretty(&json).unwrap()
+            } else {
+                body
+            }
         }
-        _ => {
-            writeln(stream, &format!("\n{body}"));
-        }
-    }
+        _ => body,
+    };
+    writeln(stream, &format!("\n{body}"));
 }

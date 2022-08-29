@@ -38,9 +38,16 @@ pub struct Args {
 
     /// Show headers
     ///
-    /// Print any headers received in the response
+    /// Print headers
     #[clap(short = 'H', long)]
     pub headers: bool,
+
+    /// Print request
+    ///
+    /// Print the content of the request as it is sent to the remote host. To also see request
+    /// headers, use thea `--headers` flag (`-H`).
+    #[clap(short, long)]
+    request: bool,
 
     /// Environment file(s)
     ///
@@ -90,6 +97,10 @@ impl Args {
 
     pub fn timeout(&self) -> Duration {
         Duration::from_secs(self.timeout as u64)
+    }
+
+    pub fn print_request(&self) -> bool {
+        self.request
     }
 
     pub fn env(&self) -> Result<Vec<Property>, ParsePropertyError> {

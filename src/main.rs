@@ -69,7 +69,6 @@ fn main() -> Result<(), FireError> {
     log::debug!("Received properties {:?}", props);
 
     let content: String = substitution(file, props)?;
-    log::debug!("Content with template substitution done:\n{}", content);
 
     // 4. Parse Validate format of request
     let request: HttpRequest = HttpRequest::from_str(&content).unwrap();
@@ -78,10 +77,25 @@ fn main() -> Result<(), FireError> {
     // 7. Make (and optionally print) request
     let client = reqwest::blocking::Client::new();
 
-    log::info!("{} {}", request.verb(), request.url().unwrap());
+    if args.print_request() {
+        let title: String = format!("{} {}", request.verb(), request.url().unwrap());
+        writeln(&mut stdout, &title);
+        let border = "━".repeat(title.len());
+        writeln(&mut stdout, &border);
 
-    if let Some(body) = request.body() {
-        log::info!("{body}");
+        if args.headers {
+            let mut spec = ColorSpec::new();
+            spec.set_dimmed(true);
+            for (k, v) in request.headers() {
+                writeln_spec(&mut stdout, &format!("{}: {:?}", k.unwrap(), v), &spec);
+            }
+        }
+
+        if let Some(body) = request.body() {
+            writeln(&mut stdout, "");
+            writeln(&mut stdout, &body);
+        }
+        writeln(&mut stdout, "");
     }
 
     let req = client
