@@ -23,16 +23,9 @@ use crate::logger::setup_logging;
 use crate::prop::Property;
 use crate::template::substitution;
 use clap::Parser;
-use error::Error;
 use error::FireError;
 use reqwest::blocking::Response;
-use reqwest::Url;
-use std::fmt::Debug;
-use std::fmt::Display;
-use std::path::PathBuf;
-use std::process;
 use std::process::ExitCode;
-use std::process::Termination;
 use std::str::FromStr;
 use std::time::Duration;
 use std::time::Instant;
@@ -40,6 +33,13 @@ use template::SubstitutionError;
 use termcolor::{Color, ColorSpec, StandardStream};
 
 fn main() -> ExitCode {
+    match exec() {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(e) => exit(e),
+    }
+}
+
+fn exec() -> Result<(), FireError> {
     let args: Args = Args::parse();
     setup_logging(args.verbosity_level);
     log::debug!("Config: {:?}", args);
@@ -48,7 +48,7 @@ fn main() -> ExitCode {
 
     if args.print_dbg {
         write(&mut stdout, &dbg_info());
-        process::exit(0);
+        return Ok(());
     }
 
     // 1. Read file content
@@ -57,12 +57,12 @@ fn main() -> ExitCode {
         Err(e) => {
             return match e.kind() {
                 std::io::ErrorKind::NotFound => {
-                    exit(FireError::FileNotFound(args.file().to_path_buf()))
+                    Err(FireError::FileNotFound(args.file().to_path_buf()))
                 }
                 std::io::ErrorKind::PermissionDenied => {
-                    exit(FireError::NoReadPermission(args.file().to_path_buf()))
+                    Err(FireError::NoReadPermission(args.file().to_path_buf()))
                 }
-                _ => exit(FireError::GenericIO(e.to_string())),
+                _ => Err(FireError::GenericIO(e.to_string())),
             }
         }
     };
@@ -119,11 +119,11 @@ fn main() -> ExitCode {
         Ok(response) => response,
         Err(e) => {
             return if e.is_timeout() {
-                exit(FireError::Timeout(e.url().unwrap().clone()))
+                Err(FireError::Timeout(e.url().unwrap().clone()))
             } else if e.is_connect() {
-                exit(FireError::Connection(e.url().unwrap().clone()))
+                Err(FireError::Connection(e.url().unwrap().clone()))
             } else {
-                exit(FireError::Other(e.to_string()))
+                Err(FireError::Other(e.to_string()))
             }
         }
     };
@@ -136,7 +136,7 @@ fn main() -> ExitCode {
     let headers = resp.headers().clone();
     let body = match resp.text() {
         Ok(body) => body,
-        Err(e) => return exit(FireError::Other(e.to_string())),
+        Err(e) => return Err(FireError::Other(e.to_string())),
     };
 
     let status_color: Option<Color> = match status.as_u16() {
@@ -171,16 +171,17 @@ fn main() -> ExitCode {
         for (k, v) in headers.clone() {
             match k {
                 Some(k) => writeln_spec(&mut stdout, &format!("{}: {:?}", k, v), &spec),
-                None => log::warn!("Found header key that was empty or unresolvable")
+                None => log::warn!("Found header key that was empty or unresolvable"),
             }
         }
     }
+
     if !body.is_empty() {
         let content_type = headers.get("content-type").map(|ct| ct.to_str().ok()).flatten();
         io::write_body(&mut stdout, content_type, body);
     }
 
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 impl From<SubstitutionError> for FireError {
