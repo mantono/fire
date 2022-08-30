@@ -5,8 +5,11 @@ use termcolor::ColorChoice;
 
 use crate::prop::{self, ParsePropertyError, Property};
 
+const BANNER: &'static str = include_str!("../resources/banner");
+const ABOUT: &'static str = include_str!("../resources/about");
+
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[clap(author, version, about, long_about = ABOUT, before_long_help = BANNER)]
 pub struct Args {
     /// Set verbosity level, 0 - 5
     ///
