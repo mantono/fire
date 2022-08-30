@@ -1,5 +1,6 @@
 mod args;
 mod dbg;
+mod error;
 mod headers;
 mod http;
 mod io;
@@ -12,6 +13,7 @@ extern crate lazy_static;
 
 use crate::args::Args;
 use crate::dbg::dbg_info;
+use crate::error::exit;
 use crate::http::HttpRequest;
 use crate::io::write;
 use crate::io::write_color;
@@ -21,21 +23,23 @@ use crate::logger::setup_logging;
 use crate::prop::Property;
 use crate::template::substitution;
 use clap::Parser;
+use error::FireError;
 use reqwest::blocking::Response;
-use reqwest::Url;
-use std::fmt::Debug;
-use std::fmt::Display;
-use std::path::PathBuf;
-use std::process;
 use std::process::ExitCode;
-use std::process::Termination;
 use std::str::FromStr;
 use std::time::Duration;
 use std::time::Instant;
 use template::SubstitutionError;
 use termcolor::{Color, ColorSpec, StandardStream};
 
-fn main() -> Result<(), FireError> {
+fn main() -> ExitCode {
+    match exec() {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(e) => exit(e),
+    }
+}
+
+fn exec() -> Result<(), FireError> {
     let args: Args = Args::parse();
     setup_logging(args.verbosity_level);
     log::debug!("Config: {:?}", args);
@@ -44,7 +48,7 @@ fn main() -> Result<(), FireError> {
 
     if args.print_dbg {
         write(&mut stdout, &dbg_info());
-        process::exit(0);
+        return Ok(());
     }
 
     // 1. Read file content
@@ -68,7 +72,7 @@ fn main() -> Result<(), FireError> {
 
     log::debug!("Received properties {:?}", props);
 
-    let content: String = substitution(file, props)?;
+    let content: String = substitution(file, props).unwrap();
 
     // 4. Parse Validate format of request
     let request: HttpRequest = HttpRequest::from_str(&content).unwrap();
@@ -114,12 +118,12 @@ fn main() -> Result<(), FireError> {
     let resp: Response = match resp {
         Ok(response) => response,
         Err(e) => {
-            if e.is_timeout() {
-                return Err(FireError::Timeout(e.url().unwrap().clone()));
+            return if e.is_timeout() {
+                Err(FireError::Timeout(e.url().unwrap().clone()))
             } else if e.is_connect() {
-                return Err(FireError::Connection(e.url().unwrap().clone()));
+                Err(FireError::Connection(e.url().unwrap().clone()))
             } else {
-                return Err(FireError::Other(e.to_string()));
+                Err(FireError::Other(e.to_string()))
             }
         }
     };
@@ -167,65 +171,17 @@ fn main() -> Result<(), FireError> {
         for (k, v) in headers.clone() {
             match k {
                 Some(k) => writeln_spec(&mut stdout, &format!("{}: {:?}", k, v), &spec),
-                None => log::warn!("Found header key that was empty or unresolvable")
+                None => log::warn!("Found header key that was empty or unresolvable"),
             }
         }
     }
+
     if !body.is_empty() {
         let content_type = headers.get("content-type").map(|ct| ct.to_str().ok()).flatten();
         io::write_body(&mut stdout, content_type, body);
     }
 
     Ok(())
-}
-
-enum FireError {
-    Timeout(Url),
-    Connection(Url),
-    FileNotFound(PathBuf),
-    NoReadPermission(PathBuf),
-    NotAFile(PathBuf),
-    GenericIO(String),
-    Template(String),
-    Other(String),
-}
-
-impl Debug for FireError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self, f)
-    }
-}
-
-impl Display for FireError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let msg: String = match &self {
-            FireError::Timeout(url) => format!("Request to {url} timed out"),
-            FireError::Connection(url) => format!("Unable to connect to URL {url}, verify that the URL is correct and that you have a working internet connection"),
-            &FireError::FileNotFound(path) => format!("Could not find file {:?}", path.clone()),
-            FireError::GenericIO(err) => format!("IO error: {err}"),
-            FireError::NotAFile(path) => format!("{:?} exists but it is not a file", path.clone()),
-            FireError::NoReadPermission(path) => format!("No permission to read file {:?}", path.clone()),
-            FireError::Template(msg) => format!("Unable to render request from template. {msg}"),
-            FireError::Other(err) => format!("Error: {err}"),
-        };
-
-        f.write_str(&msg)
-    }
-}
-
-impl Termination for FireError {
-    fn report(self) -> process::ExitCode {
-        match self {
-            FireError::Timeout(_) => ExitCode::from(3),
-            FireError::Connection(_) => ExitCode::from(4),
-            FireError::FileNotFound(_) => ExitCode::from(5),
-            FireError::NoReadPermission(_) => ExitCode::from(6),
-            FireError::NotAFile(_) => ExitCode::from(7),
-            FireError::GenericIO(_) => ExitCode::from(8),
-            FireError::Template(_) => ExitCode::from(9),
-            FireError::Other(_) => ExitCode::from(1),
-        }
-    }
 }
 
 impl From<SubstitutionError> for FireError {
