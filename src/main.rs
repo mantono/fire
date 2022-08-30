@@ -165,7 +165,10 @@ fn main() -> Result<(), FireError> {
         let mut spec = ColorSpec::new();
         spec.set_dimmed(true);
         for (k, v) in headers.clone() {
-            writeln_spec(&mut stdout, &format!("{}: {:?}", k.unwrap(), v), &spec);
+            match k {
+                Some(k) => writeln_spec(&mut stdout, &format!("{}: {:?}", k, v), &spec),
+                None => log::warn!("Found header key that was empty or unresolvable")
+            }
         }
     }
     if !body.is_empty() {
