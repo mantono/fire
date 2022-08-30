@@ -20,7 +20,8 @@ pub enum SubstitutionError {
     MissingValue(String),
 }
 
-fn merge(maps: Vec<Property>) -> HashMap<String, String> {
+fn merge(mut maps: Vec<Property>) -> HashMap<String, String> {
+    maps.sort();
     maps.into_iter()
         .map(|prop| (prop.key().to_string(), prop.value().to_string()))
         .collect()

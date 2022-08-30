@@ -8,7 +8,6 @@ fn main() {
         .set_cfg(true)
         .set_ci(false)
         .set_dependencies(false)
-        .set_git(true)
         .set_env(true)
         .set_features(true);
 

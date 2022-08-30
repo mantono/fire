@@ -1,9 +1,15 @@
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+    time::Duration,
+};
 
 use clap::Parser;
+use git2::{Repository, RepositoryOpenFlags};
 use termcolor::ColorChoice;
+use walkdir::{DirEntry, WalkDir};
 
-use crate::prop::{self, ParsePropertyError, Property};
+use crate::prop::{self, ParsePropertyError, Property, DEFAULT_PRIO, HIGHEST_PRIO, LOWEST_PRIO};
 
 const BANNER: &'static str = include_str!("../resources/banner");
 const ABOUT: &'static str = include_str!("../resources/about");
@@ -52,12 +58,19 @@ pub struct Args {
     #[clap(short, long)]
     request: bool,
 
-    /// Environment file(s)
+    /// Environments
     ///
-    /// One or several files containing environment variables. These will override the environment
-    /// variables inherited from the operating system.
+    /// One or several environments which containins environment variables. If the environment is
+    /// `development`, the application will search for any occurence of `development.env` in the
+    /// current directory and parent directories, as long as the search is confined to the Git
+    /// repository where the request resides. If the command is not executed inside a Git
+    /// repository, no traversing to parental directories will be done.
+    ///
+    /// Varaibles found in *.env files will override the environment variables inherited from the
+    /// operating system and in the special `.env` which is a "global" environment that will be
+    /// always be included regardless of environment.
     #[clap(short, long)]
-    env: Vec<PathBuf>,
+    env: Vec<String>,
 
     /// Set environment variable
     ///
@@ -67,7 +80,7 @@ pub struct Args {
     /// precendence over an environment variable from the system and an environment variable found
     /// in and environment variables file.
     #[clap(short = 'E', long = "variable")]
-    env_vars: Vec<Property>,
+    arg_vars: Vec<Property>,
 
     /// Request timeout
     ///
@@ -111,24 +124,79 @@ impl Args {
             .into_iter()
             .map(Property::try_from)
             .filter_map(|p| p.ok())
+            .map(|prop| prop.with_prio(LOWEST_PRIO))
             .collect();
-
+        /*
         let file_envs: Vec<Property> = self
             .env
             .clone()
+            .into_iter()
+            .map(|file| prop::from_file(&file, DEFAULT_PRIO).unwrap())
+            .flatten()
+            .collect(); */
+
+        let file_envs: Vec<Property> = Self::find_env_files(&self.file, self.env.clone())
             .into_iter()
             .map(|file| prop::from_file(&file).unwrap())
             .flatten()
             .collect();
 
-        let alloc_size: usize = sys_envs.len() + file_envs.len() + self.env_vars.len();
+        let arg_vars: Vec<Property> = self
+            .arg_vars
+            .clone()
+            .into_iter()
+            .map(|prop| prop.with_prio(HIGHEST_PRIO))
+            .collect();
+
+        let alloc_size: usize = sys_envs.len() + file_envs.len() + arg_vars.len();
 
         let mut props: Vec<Property> = Vec::with_capacity(alloc_size);
 
         props.extend(sys_envs);
         props.extend(file_envs);
-        props.extend(self.env_vars.clone());
+        props.extend(arg_vars);
 
         Ok(props)
+    }
+
+    fn find_env_files(request_file: &Path, environments: Vec<String>) -> Vec<PathBuf> {
+        let mut files: Vec<String> = environments.into_iter().map(|env| env + ".env").collect();
+        files.push(String::from(".env"));
+
+        let end: PathBuf = request_file.parent().unwrap().canonicalize().unwrap();
+        let start: PathBuf = match Self::git_root() {
+            Some(root) => root.parent().unwrap().to_path_buf(),
+            None => end.clone(),
+        };
+
+        log::info!("Start is {:?}", start);
+        log::info!("End is {:?}", end);
+        WalkDir::new(start)
+            .follow_links(false)
+            .contents_first(false)
+            .into_iter()
+            //  entry.path().ends_with(&end)
+            .filter_entry(|entry| end.starts_with(entry.path()) || entry.file_type().is_file())
+            .filter_map(|entry| entry.ok())
+            .inspect(|e| log::debug!("Inspecting {:?}", e))
+            .filter(|entry| {
+                let ftype = entry.file_type();
+                if ftype.is_file() {
+                    let name: String = entry.file_name().to_str().unwrap().to_string();
+                    files.contains(&name)
+                } else {
+                    false
+                }
+            })
+            .inspect(|e| log::debug!("Found .env file {:?}", e))
+            .map(|e| e.into_path())
+            .collect()
+    }
+
+    fn git_root() -> Option<PathBuf> {
+        let ceiling = ["/"];
+        Repository::open_ext(".", RepositoryOpenFlags::CROSS_FS, ceiling)
+            .map(|p| p.path().to_owned())
+            .ok()
     }
 }
