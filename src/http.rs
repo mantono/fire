@@ -16,10 +16,10 @@ pub struct HttpRequest {
     headers: Vec<Header>,
 }
 
-const USER_AGENT_KEY: &'static str = "user-agent";
-const USER_AGENT: &'static str = "fire/0.1.0";
-const CONTENT_LENGTH_KEY: &'static str = "content-length";
-const HOST_KEY: &'static str = "host";
+const USER_AGENT_KEY: &str = "user-agent";
+const USER_AGENT: &str = "fire/0.1.0";
+const CONTENT_LENGTH_KEY: &str = "content-length";
+const HOST_KEY: &str = "host";
 
 impl HttpRequest {
     pub fn verb(&self) -> Verb {
@@ -162,9 +162,9 @@ impl Header {
 
 #[derive(Debug)]
 pub enum ParseHeaderError {
-    InvalidEntry(String),
-    InvalidKey(String),
-    InvalidValue(String),
+    Entry(String),
+    Key(String),
+    Value(String),
 }
 
 impl FromStr for Header {
@@ -178,7 +178,7 @@ impl FromStr for Header {
                 let value: String = parts[1].trim().to_string();
                 Header::new(key, value)
             }
-            _ => Err(ParseHeaderError::InvalidEntry(s.to_string())),
+            _ => Err(ParseHeaderError::Entry(s.to_string())),
         }
     }
 }

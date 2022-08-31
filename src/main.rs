@@ -97,7 +97,7 @@ fn exec() -> Result<(), FireError> {
 
         if let Some(body) = request.body() {
             writeln(&mut stdout, "");
-            writeln(&mut stdout, &body);
+            writeln(&mut stdout, body);
         }
         writeln(&mut stdout, "");
     }
@@ -177,7 +177,7 @@ fn exec() -> Result<(), FireError> {
     }
 
     if !body.is_empty() {
-        let content_type = headers.get("content-type").map(|ct| ct.to_str().ok()).flatten();
+        let content_type = headers.get("content-type").and_then(|ct| ct.to_str().ok());
         io::write_body(&mut stdout, content_type, body);
     }
 
