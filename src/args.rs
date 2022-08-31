@@ -163,7 +163,14 @@ impl Args {
         let mut files: Vec<String> = environments.into_iter().map(|env| env + ".env").collect();
         files.push(String::from(".env"));
 
-        let end: PathBuf = request_file.parent().unwrap().canonicalize().unwrap();
+        let end: PathBuf = request_file
+            .canonicalize()
+            .unwrap()
+            .to_path_buf()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+
         let start: PathBuf = match Self::git_root() {
             Some(root) => root.parent().unwrap().to_path_buf(),
             None => end.clone(),
