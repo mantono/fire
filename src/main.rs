@@ -72,7 +72,7 @@ fn exec() -> Result<(), FireError> {
 
     log::debug!("Received properties {:?}", props);
 
-    let content: String = substitution(file, props).unwrap();
+    let content: String = substitution(file, props)?;
 
     // 4. Parse Validate format of request
     let request: HttpRequest = HttpRequest::from_str(&content).unwrap();

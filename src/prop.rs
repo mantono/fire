@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-use std::fmt::Write;
 use std::{fmt::Display, path::Path, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Ord)]
@@ -63,14 +62,13 @@ impl std::cmp::PartialOrd for Property {
 pub fn from_file(path: &Path) -> Result<Vec<Property>, ParsePropertyError> {
     let content: String = std::fs::read_to_string(path)?;
     let source: Source = source(path);
-    let props: Vec<Property> = content
+
+    content
         .lines()
         .into_iter()
-        .map(|line| Property::from_str(line).unwrap())
-        .map(|prop| prop.with_source(source))
-        .collect();
-
-    Ok(props)
+        .map(Property::from_str)
+        .map(|prop| prop.map(|p| p.with_source(source)))
+        .collect()
 }
 
 fn source(path: &Path) -> Source {

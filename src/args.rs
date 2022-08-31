@@ -1,13 +1,12 @@
 use std::{
     path::{Path, PathBuf},
-    str::FromStr,
     time::Duration,
 };
 
 use clap::Parser;
 use git2::{Repository, RepositoryOpenFlags};
 use termcolor::ColorChoice;
-use walkdir::{DirEntry, WalkDir};
+use walkdir::WalkDir;
 
 use crate::prop::{self, ParsePropertyError, Property};
 
@@ -120,36 +119,11 @@ impl Args {
     }
 
     pub fn env(&self) -> Result<Vec<Property>, ParsePropertyError> {
-        let sys_envs: Vec<Property> = std::env::vars()
-            .into_iter()
-            .map(Property::try_from)
-            .filter_map(|p| p.ok())
-            .map(|prop| prop.with_source(prop::Source::EnvVar))
-            .collect();
-        /*
-        let file_envs: Vec<Property> = self
-            .env
-            .clone()
-            .into_iter()
-            .map(|file| prop::from_file(&file, DEFAULT_PRIO).unwrap())
-            .flatten()
-            .collect(); */
-
-        let file_envs: Vec<Property> = Self::find_env_files(&self.file, self.env.clone())
-            .into_iter()
-            .map(|file| prop::from_file(&file).unwrap())
-            .flatten()
-            .collect();
-
-        let arg_vars: Vec<Property> = self
-            .arg_vars
-            .clone()
-            .into_iter()
-            .map(|prop| prop.with_source(prop::Source::Arg))
-            .collect();
+        let sys_envs: Vec<Property> = Self::read_sys_envs()?;
+        let file_envs: Vec<Property> = self.read_file_envs()?;
+        let arg_vars: Vec<Property> = self.read_arg_vars();
 
         let alloc_size: usize = sys_envs.len() + file_envs.len() + arg_vars.len();
-
         let mut props: Vec<Property> = Vec::with_capacity(alloc_size);
 
         props.extend(sys_envs);
@@ -157,6 +131,32 @@ impl Args {
         props.extend(arg_vars);
 
         Ok(props)
+    }
+
+    fn read_sys_envs() -> Result<Vec<Property>, ParsePropertyError> {
+        std::env::vars()
+            .into_iter()
+            .map(Property::try_from)
+            .map(|res| res.map(|prop| prop.with_source(prop::Source::EnvVar)))
+            .collect()
+    }
+
+    fn read_file_envs(&self) -> Result<Vec<Property>, ParsePropertyError> {
+        let file_envs: Result<Vec<Vec<Property>>, ParsePropertyError> =
+            Self::find_env_files(&self.file, self.env.clone())
+                .into_iter()
+                .map(|file| prop::from_file(&file))
+                .collect();
+
+        file_envs.map(|vec| vec.into_iter().flatten().collect())
+    }
+
+    fn read_arg_vars(&self) -> Vec<Property> {
+        self.arg_vars
+            .clone()
+            .into_iter()
+            .map(|prop| prop.with_source(prop::Source::Arg))
+            .collect()
     }
 
     fn find_env_files(request_file: &Path, environments: Vec<String>) -> Vec<PathBuf> {
