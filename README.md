@@ -1,9 +1,11 @@
 # fire
+A HTTP request client for your terminal
+
 ## Usage
 ##### Execute a request
 `fire my_request.req`
 
-##### Execure a request for a specific environment
+##### Execute a request for a specific environment
 `fire my_request.req -e environment`
 
 ## Request Files
@@ -63,3 +65,12 @@ API_URL=https://url-to-some.api.com/api
 TOKEN=some-secret-token
 USERNAME="quoted-username"
 ```
+
+## Additional Documentation
+See `fire --help` for more documentation on how to use the application.
+
+## Building
+1. [Install Rust](https://rustup.rs/) - if you do not have it installed
+2. Clone this repository - `git clone git@github.com:mantono/fire.git`
+3. Build application - `cargo build --release` inside the root of the repository
+4. Install application - `cargo install --path .`
