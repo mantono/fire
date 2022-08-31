@@ -2,9 +2,8 @@ use clap::crate_version;
 
 pub fn dbg_info() -> String {
     format!(
-        "Crate version {}.\nBuilt from commit {} by {} for target {} with profile '{}' and features = {:?}.",
+        "Crate version {}.\nBuilt from by {} for target {} with profile '{}' and features = {:?}.",
         crate_version!(),
-        built_info::GIT_VERSION.unwrap(),
         built_info::RUSTC_VERSION,
         built_info::TARGET,
         built_info::PROFILE,
