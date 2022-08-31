@@ -9,7 +9,7 @@ use git2::{Repository, RepositoryOpenFlags};
 use termcolor::ColorChoice;
 use walkdir::{DirEntry, WalkDir};
 
-use crate::prop::{self, ParsePropertyError, Property, DEFAULT_PRIO, HIGHEST_PRIO, LOWEST_PRIO};
+use crate::prop::{self, ParsePropertyError, Property};
 
 const BANNER: &'static str = include_str!("../resources/banner");
 const ABOUT: &'static str = include_str!("../resources/about");
@@ -124,7 +124,7 @@ impl Args {
             .into_iter()
             .map(Property::try_from)
             .filter_map(|p| p.ok())
-            .map(|prop| prop.with_prio(LOWEST_PRIO))
+            .map(|prop| prop.with_source(prop::Source::EnvVar))
             .collect();
         /*
         let file_envs: Vec<Property> = self
@@ -145,7 +145,7 @@ impl Args {
             .arg_vars
             .clone()
             .into_iter()
-            .map(|prop| prop.with_prio(HIGHEST_PRIO))
+            .map(|prop| prop.with_source(prop::Source::Arg))
             .collect();
 
         let alloc_size: usize = sys_envs.len() + file_envs.len() + arg_vars.len();
