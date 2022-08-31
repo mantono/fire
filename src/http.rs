@@ -27,9 +27,8 @@ impl HttpRequest {
     }
 
     pub fn url(&self) -> Result<Url, url::ParseError> {
-        let url: String = self.url.to_ascii_lowercase();
-        if url.starts_with("http://") || url.starts_with("https://") {
-            Url::parse(&url)
+        if self.url.starts_with("http://") || self.url.starts_with("https://") {
+            Url::parse(&self.url)
         } else {
             Url::parse(&format!("https://{}", &self.url))
         }
