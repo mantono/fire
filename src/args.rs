@@ -10,8 +10,8 @@ use walkdir::WalkDir;
 
 use crate::prop::{self, ParsePropertyError, Property};
 
-const BANNER: &'static str = include_str!("../resources/banner");
-const ABOUT: &'static str = include_str!("../resources/about");
+const BANNER: &str = include_str!("../resources/banner");
+const ABOUT: &str = include_str!("../resources/about");
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = ABOUT, before_long_help = BANNER)]
@@ -163,13 +163,7 @@ impl Args {
         let mut files: Vec<String> = environments.into_iter().map(|env| env + ".env").collect();
         files.push(String::from(".env"));
 
-        let end: PathBuf = request_file
-            .canonicalize()
-            .unwrap()
-            .to_path_buf()
-            .parent()
-            .unwrap()
-            .to_path_buf();
+        let end: PathBuf = request_file.canonicalize().unwrap().parent().unwrap().to_path_buf();
 
         let start: PathBuf = match Self::git_root() {
             Some(root) => root.parent().unwrap().to_path_buf(),

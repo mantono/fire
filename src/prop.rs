@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::{fmt::Display, path::Path, str::FromStr};
 
-#[derive(Debug, Clone, PartialEq, Eq, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Property {
     key: String,
     value: String,
@@ -53,9 +53,15 @@ impl Property {
     }
 }
 
-impl std::cmp::PartialOrd for Property {
+impl Ord for Property {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.source.cmp(&other.source)
+    }
+}
+
+impl PartialOrd for Property {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.source.cmp(&other.source))
+        Some(self.cmp(other))
     }
 }
 
