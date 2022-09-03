@@ -60,14 +60,14 @@ pub struct Args {
     /// Environments
     ///
     /// One or several environments which containins environment variables. If the environment is
-    /// `development`, the application will search for any occurence of `development.env` in the
-    /// current directory and parent directories, as long as the search is confined to the Git
-    /// repository where the request resides. If the command is not executed inside a Git
-    /// repository, no traversing to parental directories will be done.
+    /// `development`, the application will search for any occurence of `development.env` or
+    /// `development.sec` in the current directory and parent directories, as long as the search is
+    /// confined to the Git repository where the request resides. If the command is not executed
+    /// inside a Git repository, no traversing to parental directories will be done.
     ///
-    /// Varaibles found in *.env files will override the environment variables inherited from the
-    /// operating system and in the special `.env` which is a "global" environment that will be
-    /// always be included regardless of environment.
+    /// Varaibles found in *.env or *.sec files will override the environment variables inherited
+    /// from the operating system and in the special `.env`/`.sec` which is a "global" environment
+    /// that will be always be included regardless of environment.
     #[clap(short, long)]
     env: Vec<String>,
 
@@ -160,8 +160,14 @@ impl Args {
     }
 
     fn find_env_files(request_file: &Path, environments: Vec<String>) -> Vec<PathBuf> {
-        let mut files: Vec<String> = environments.into_iter().map(|env| env + ".env").collect();
+        let mut files: Vec<String> = environments
+            .into_iter()
+            .map(|env| vec![env.clone() + ".env", env + ".sec"])
+            .flatten()
+            .collect();
+
         files.push(String::from(".env"));
+        files.push(String::from(".sec"));
 
         let end: PathBuf = request_file.canonicalize().unwrap().parent().unwrap().to_path_buf();
 
@@ -176,10 +182,8 @@ impl Args {
             .follow_links(false)
             .contents_first(false)
             .into_iter()
-            //  entry.path().ends_with(&end)
             .filter_entry(|entry| end.starts_with(entry.path()) || entry.file_type().is_file())
             .filter_map(|entry| entry.ok())
-            .inspect(|e| log::debug!("Inspecting {:?}", e))
             .filter(|entry| {
                 let ftype = entry.file_type();
                 if ftype.is_file() {
@@ -189,7 +193,7 @@ impl Args {
                     false
                 }
             })
-            .inspect(|e| log::debug!("Found .env file {:?}", e))
+            .inspect(|e| log::debug!("Found environments file {:?}", e))
             .map(|e| e.into_path())
             .collect()
     }
