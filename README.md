@@ -52,17 +52,21 @@ files that can be re-used for different environments or contexts. Variables can 
 to highest priority):
 1. Environment variables - environment variables in your system are accessed by the application and will be used, but only as last resort
 if they cannot be found anywhere else
-2. Global environment files - any file named exactly `.env` which is present in the same directory or parent directories of the request file
-3. Environment specific files - any file matching the specific environment (like `development.env` if the environment is `development`) which is present in the same directory or parent directories of the request file, when an environment is specified (using flag `-e`)
+2. Global environment files - any file named exactly `.env` or `.sec` which is present in the same directory or parent directories of the request file
+3. Environment specific files - any file matching the specific environment (like `development.env` or `development.sec` if the environment is `development`) which is present in the same directory or parent directories of the request file, when an environment is specified (using flag `-e`)
 4. Command line arguments - variables supplied to the application at the command line at execution time (using flag `-E`), these will override any of the previous sources for variables
 
 The priority of resolved environment files are such as that the any environment file in the same folder as the request file has the highest priority when resolving variables (if the same variable is defined in multiple places). Found files in parent directories will be considered as well, but the futher up they are found the lower priority they will have. If the request files are stored in a Git repository, the application will never consider files outside the repository. If the request is not stored in a Git repository, only the immediate directory and no parents will be considered.
+
+It is possible to specify multiple environments with the `--environment` (`-e`) flag, if needed. The order in which the different environments variables are applied are undefined, so it is recommended that you do not have the same variable defined in multiple environments if you are going to use them at the same time.
+
+Note that there is technically not any difference between files ending with `.env` and `.sec`. Having two different file endings for environment configuration allows you to have the convention of putting sensitive variables in `.sec` files while having non-sensitive configuration in `.env` files. **It is highly recommended that you add a `.gitignore` filter to your repository which is `*.sec`, so you do not accidentally commit any secrets.**
 
 Example of file which contains "environment variables"
 
 ```sh
 API_URL=https://url-to-some.api.com/api
-TOKEN=some-secret-token
+REGION=europe
 USERNAME="quoted-username"
 ```
 
