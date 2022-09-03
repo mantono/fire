@@ -58,24 +58,15 @@ if they cannot be found anywhere else
 
 The priority of resolved environment files are such as that the any environment file in the same folder as the request file has the highest priority when resolving variables (if the same variable is defined in multiple places). Found files in parent directories will be considered as well, but the futher up they are found the lower priority they will have. If the request files are stored in a Git repository, the application will never consider files outside the repository. If the request is not stored in a Git repository, only the immediate directory and no parents will be considered.
 
-Note that there is technically not any difference between files ending with `.env` and `.sec`. Having two different file endings for environment configuration
-allows you to have the convention of putting sensitive variables in `.sec` files while having non-sensitive configuration in `.env` files. **It is highly
-recommended that you add a .gitignore filter to your repository which is `*.sec`, so you do not accidentally commit any secrets.**
+It is possible to specify multiple environments with the `--environment` (`-e`) flag, if needed. The order in which the different environments variables are applied are undefined, so it is recommended that you do not have the same variable defined in multiple environments if you are going to use them at the same time.
 
- Often you have environment specific configuration of
-more sensitive nature (such as API credentials), which you would most likely not want to commit into your repository. These you could put in a file ending with
- `.sec`, and then have a `.gitignore` filter which is `*.sec`. For environment configuration of variables that are not of sensitive nature, and which it
- would preferrable to commit into the repository, it is recommended to put these in files ending with `.env`.
-
- but sometimes you have environment specific configuration
-which is not sensitive and can be committed into a repository, and a lot of times you have environment specific variables which are of a more sensitive
-nature  and
+Note that there is technically not any difference between files ending with `.env` and `.sec`. Having two different file endings for environment configuration allows you to have the convention of putting sensitive variables in `.sec` files while having non-sensitive configuration in `.env` files. **It is highly recommended that you add a `.gitignore` filter to your repository which is `*.sec`, so you do not accidentally commit any secrets.**
 
 Example of file which contains "environment variables"
 
 ```sh
 API_URL=https://url-to-some.api.com/api
-TOKEN=some-secret-token
+REGION=europe
 USERNAME="quoted-username"
 ```
 
