@@ -19,7 +19,7 @@ A request file uses [YAML](https://quickref.me/yaml) (`.yml`) syntax and contain
 | body     | No       | `{ "foo": "bar" }` |
 
 ```yaml
-# This is comment that can be used as a description for the request file
+# This is a comment that can be used as a description for the request file
 method: POST
 url: https://42x.io/some-endpoint
 headers:
