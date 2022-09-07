@@ -8,9 +8,6 @@ mod logger;
 mod prop;
 mod template;
 
-#[macro_use]
-extern crate lazy_static;
-
 use crate::args::Args;
 use crate::dbg::dbg_info;
 use crate::error::exit;

@@ -1,2 +1,2 @@
-Execute HTTP requests from the command line with the help of predefined request files (.req) which
+Execute HTTP requests from the command line with the help of predefined request files which
 supports templating with the handlebar template syntax.

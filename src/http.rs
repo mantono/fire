@@ -1,19 +1,19 @@
-use std::{fmt::Display, str::FromStr};
+use std::{collections::HashMap, fmt::Display, str::FromStr};
 
-use regex::Regex;
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Url,
 };
+use serde::Deserialize;
 
 use crate::headers::Appendable;
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct HttpRequest {
     verb: Verb,
     url: String,
     body: Option<String>,
-    headers: Vec<Header>,
+    headers: Option<HashMap<String, String>>,
 }
 
 const USER_AGENT_KEY: &str = "user-agent";
@@ -35,9 +35,9 @@ impl HttpRequest {
     }
 
     pub fn headers(&self) -> HeaderMap<HeaderValue> {
-        let h = self.headers.clone();
+        let h = self.headers.clone().unwrap_or_default();
         let mut headers = HeaderMap::with_capacity(h.len());
-        for Header { key, value } in h {
+        for (key, value) in h {
             let (k, v) = Self::header(&key, &value);
             headers.append(k, v);
         }
@@ -77,121 +77,16 @@ impl HttpRequest {
     }
 }
 
-lazy_static! {
-    static ref DELIMITER: Regex = Regex::new(r"\n\s*\n").unwrap();
-    static ref COMMENT: Regex = Regex::new(r"^[[:blank:]]*#").unwrap();
-}
-
-fn verb_and_url(line: &str) -> Result<(Verb, String), String> {
-    let mut parts = line.split_ascii_whitespace();
-    let verb: Verb = match parts.next() {
-        Some(v) => Verb::from_str(v)?,
-        None => return Err("Expected a HTTP method on first line, but none were found".to_string()),
-    };
-
-    let url: String = match parts.next() {
-        Some(p) => p.to_string(),
-        None => {
-            return Err(
-                "Expected a URL on first line one after the HTTP method, but none were found"
-                    .to_string(),
-            )
-        }
-    };
-
-    Ok((verb, url))
-}
-
 impl FromStr for HttpRequest {
-    type Err = String;
+    type Err = serde_yaml::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Divide the file content into two parts, top and bottom
-        let parts: Vec<&str> = DELIMITER.splitn(s, 2).collect();
-        // Top contains verb, url and headers
-        let top: &str = parts[0];
-        // Bottom contains an optional body
-        let bottom: Option<&&str> = parts.get(1);
-
-        let mut lines = top.lines().filter(|line| !COMMENT.is_match(line));
-        let first_line: &str = match lines.next() {
-            Some(first) => first,
-            None => return Err("File is empty".to_string()),
-        };
-
-        let (verb, url) = verb_and_url(first_line)?;
-
-        let headers: Vec<Header> = lines
-            .take_while(|line| !line.is_empty())
-            .map(|line| line.to_string())
-            .map(|line| Header::from_str(&line).unwrap())
-            .collect();
-
-        let body: Option<String> = bottom.map(|v| v.to_owned().to_owned());
-
-        let req = HttpRequest {
-            verb,
-            url,
-            body,
-            headers,
-        };
-
-        Ok(req)
+        serde_yaml::from_str(s)
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Header {
-    key: String,
-    value: String,
-}
-
-impl Header {
-    pub fn new(key: String, value: String) -> Result<Header, ParseHeaderError> {
-        Ok(Header { key, value })
-    }
-
-    pub fn key(&self) -> &str {
-        &self.key
-    }
-
-    pub fn value(&self) -> &str {
-        &self.value
-    }
-}
-
-#[derive(Debug)]
-pub enum ParseHeaderError {
-    Entry(String),
-    Key(String),
-    Value(String),
-}
-
-impl FromStr for Header {
-    type Err = ParseHeaderError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = s.splitn(2, ':').collect();
-        match parts.len() {
-            2 => {
-                let key: String = parts[0].trim().to_string();
-                let value: String = parts[1].trim().to_string();
-                Header::new(key, value)
-            }
-            _ => Err(ParseHeaderError::Entry(s.to_string())),
-        }
-    }
-}
-
-impl TryFrom<(String, String)> for Header {
-    type Error = ParseHeaderError;
-
-    fn try_from(value: (String, String)) -> Result<Self, Self::Error> {
-        Header::new(value.0, value.1)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all(deserialize = "UPPERCASE"))]
 pub enum Verb {
     Get,
     Head,
@@ -238,25 +133,6 @@ impl Display for Verb {
     }
 }
 
-impl FromStr for Verb {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "CONNECT" => Ok(Verb::Connect),
-            "DELETE" => Ok(Verb::Delete),
-            "GET" => Ok(Verb::Get),
-            "HEAD" => Ok(Verb::Head),
-            "OPTIONS" => Ok(Verb::Options),
-            "PATCH" => Ok(Verb::Patch),
-            "POST" => Ok(Verb::Post),
-            "PUT" => Ok(Verb::Put),
-            "TRACE" => Ok(Verb::Trace),
-            _ => Err(format!("Invalid HTTP method '{}'", s)),
-        }
-    }
-}
-
 pub enum BodyStatus {
     Permitted,
     Discouraged,
@@ -276,5 +152,63 @@ impl From<Verb> for reqwest::Method {
             Verb::Trace => Self::TRACE,
             Verb::Patch => Self::PATCH,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use reqwest::{
+        header::{HeaderMap, HeaderValue},
+        Url,
+    };
+
+    use crate::http::Verb;
+
+    use super::HttpRequest;
+
+    #[test]
+    fn test_parse_request_from_str() {
+        let input = r###"
+            # This is a comment
+            verb: POST
+            url: api.github.com/markdown
+            headers:
+              accept: application/vnd.github+json
+              content-type: application/json
+
+            body: >
+              {
+                  "text": "**Hello** _world_!",
+                  "mode": "markdown"
+              }
+        "###;
+
+        let request = HttpRequest::from_str(input).unwrap();
+
+        assert_eq!(Verb::Post, request.verb());
+
+        let expected_url = Url::parse("https://api.github.com/markdown").unwrap();
+        let actual_url = request.url().unwrap();
+
+        assert_eq!(expected_url, actual_url);
+
+        let headers: HeaderMap<HeaderValue> = request.headers();
+
+        let content_type = headers.get("content-type").unwrap();
+        let host = headers.get("host").unwrap();
+        let accept = headers.get("accept").unwrap();
+        let user_agent = headers.get("user-agent").unwrap().to_str().unwrap();
+        let content_size: usize =
+            headers.get("content-length").unwrap().to_str().unwrap().parse().unwrap();
+
+        assert_eq!("application/json", content_type);
+        assert_eq!("api.github.com", host);
+        assert_eq!("application/vnd.github+json", accept);
+        assert_eq!("fire/", &user_agent[..5]);
+        assert!(content_size > 0);
+
+        assert!(request.body().is_some())
     }
 }
