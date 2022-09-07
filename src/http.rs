@@ -1,4 +1,4 @@
-use std::{fmt::Display, str::FromStr, collections::HashMap};
+use std::{collections::HashMap, fmt::Display, str::FromStr};
 
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -77,7 +77,6 @@ impl HttpRequest {
     }
 }
 
-
 impl FromStr for HttpRequest {
     type Err = serde_yaml::Error;
 
@@ -86,7 +85,7 @@ impl FromStr for HttpRequest {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all(deserialize = "UPPERCASE"))]
 pub enum Verb {
     Get,
@@ -153,5 +152,63 @@ impl From<Verb> for reqwest::Method {
             Verb::Trace => Self::TRACE,
             Verb::Patch => Self::PATCH,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use reqwest::{
+        header::{HeaderMap, HeaderValue},
+        Url,
+    };
+
+    use crate::http::Verb;
+
+    use super::HttpRequest;
+
+    #[test]
+    fn test_parse_request_from_str() {
+        let input = r###"
+            # This is a comment
+            verb: POST
+            url: api.github.com/markdown
+            headers:
+              accept: application/vnd.github+json
+              content-type: application/json
+
+            body: >
+              {
+                  "text": "**Hello** _world_!",
+                  "mode": "markdown"
+              }
+        "###;
+
+        let request = HttpRequest::from_str(input).unwrap();
+
+        assert_eq!(Verb::Post, request.verb());
+
+        let expected_url = Url::parse("https://api.github.com/markdown").unwrap();
+        let actual_url = request.url().unwrap();
+
+        assert_eq!(expected_url, actual_url);
+
+        let headers: HeaderMap<HeaderValue> = request.headers();
+
+        let content_type = headers.get("content-type").unwrap();
+        let host = headers.get("host").unwrap();
+        let accept = headers.get("accept").unwrap();
+        let user_agent = headers.get("user-agent").unwrap().to_str().unwrap();
+        let content_size: usize =
+            headers.get("content-length").unwrap().to_str().unwrap().parse().unwrap();
+
+        assert_eq!("application/json", content_type);
+        assert_eq!("api.github.com", host);
+        assert_eq!("application/vnd.github+json", accept);
+        assert_eq!("fire/", &user_agent[..5]);
+        assert!(content_size > 0);
+
+        assert!(request.body().is_some())
     }
 }
