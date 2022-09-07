@@ -1,5 +1,5 @@
-verb: GET 
+verb: GET
 url: api.github.com/octocat?s=Hello+{{USER}}
-headers: 
+headers:
   Accept: application/vnd.github+json
   Authorization: token {{GITHUB_TOKEN}}
