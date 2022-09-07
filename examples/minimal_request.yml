@@ -1,0 +1,3 @@
+# Minimal example
+verb: GET 
+url: api.github.com/zen

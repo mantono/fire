@@ -1,3 +1,0 @@
-GET api.github.com/octocat?s=Hello+{{USER}}
-Accept: application/vnd.github+json
-Authorization: token {{GITHUB_TOKEN}}

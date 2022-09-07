@@ -3,45 +3,47 @@ A HTTP request client for your terminal
 
 ## Usage
 ##### Execute a request
-`fire my_request.req`
+`fire my_request.yml`
 
 ##### Execute a request for a specific environment
-`fire my_request.req -e environment`
+`fire my_request.yml -e environment`
 
 ## Request Files
-A request (`.req`) file contains the following things
-- Method (`GET`, `POST`, `PUT`, etc)
-- URL
-- Headers (optional)
-- Body (optional)
-- Decription or comments (optional)
+A request file uses [YAML](https://quickref.me/yaml) (`.yml`) syntax and contains the following properties
 
-The body is separated from the headers with one blank line.
+| Property | Required | Example Value |
+|:--------:|:--------:|:-------------:|
+| method   | **Yes**  | `POST`        |
+| url      | **Yes**  | `https://42x.io/some-endpoint` |
+| headers  | No       | `content-type: application/json` |
+| body     | No       | `{ "foo": "bar" }` |
 
 ```yaml
 # This is comment that can be used as a description for the request file
-# Comments can be placed anywhere in the file except for inside the body
-# The first line of the file (if it not a comment) must contain the method and the URL
-POST https://42x.io/some-endpoint
-accept: application/json
-# Headers `host`, `content-length` (if there is a body) and `user-agent` are always sent
-# since a lot of requests will fail without them.
-content-type: application/json
-x-correlation-id: ce19f5b6-6333-4004-a191-67476fe241be
-# Note that the next blank line is significant for being able to parse the body
+method: POST
+url: https://42x.io/some-endpoint
+headers:
+  accept: application/json
+  # Headers `host`, `content-length` (if there is a body) and `user-agent` are always sent
+  # since a lot of requests will fail without them.
+  content-type: application/json
+  x-correlation-id: ce19f5b6-6333-4004-a191-67476fe241be
 
-{
-  "foo": "bar",
-  "nice_primes": [977, 3457, 3457, 6133, 7919]
-}
+body: |
+  {
+    "foo": "bar",
+    "nice_primes": [977, 3457, 3457, 6133, 7919]
+  }
 ```
 
 A more complex example with templating (using [Handlebars syntax](https://handlebarsjs.com/guide/#what-is-handlebars))
 
 ```yaml
-GET https://{{DOMAIN_NAME}}/some-endpoint?user={{USER}}
-accept: application/json
-authorization: Bearer {{TOKEN}}
+method: GET
+url: https://{{DOMAIN_NAME}}/some-endpoint?user={{USER}}
+headers:
+  accept: application/json
+  authorization: Bearer {{TOKEN}}
 ```
 
 See [examples](examples/) directory for more examples of how to structure request files.
