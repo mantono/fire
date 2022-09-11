@@ -1,6 +1,7 @@
 mod args;
 mod dbg;
 mod error;
+mod format;
 mod headers;
 mod http;
 mod io;
@@ -11,6 +12,7 @@ mod template;
 use crate::args::Args;
 use crate::dbg::dbg_info;
 use crate::error::exit;
+use crate::format::ContentFormatter;
 use crate::http::HttpRequest;
 use crate::io::write;
 use crate::io::write_color;
@@ -78,6 +80,13 @@ fn exec() -> Result<(), FireError> {
     // 7. Make (and optionally print) request
     let client = reqwest::blocking::Client::new();
 
+    let formatters: Vec<Box<dyn ContentFormatter>> = format::formatters();
+
+    let req_headers = request.headers();
+
+    let content_type: Option<&str> =
+        req_headers.get("content-type").map(|h| h.to_str()).map(|v| v.unwrap());
+
     if args.print_request() {
         let title: String = format!("{} {}", request.verb(), request.url().unwrap());
         writeln(&mut stdout, &title);
@@ -87,14 +96,20 @@ fn exec() -> Result<(), FireError> {
         if args.headers {
             let mut spec = ColorSpec::new();
             spec.set_dimmed(true);
-            for (k, v) in request.headers() {
-                writeln_spec(&mut stdout, &format!("{}: {:?}", k.unwrap(), v), &spec);
+            for (k, v) in &req_headers {
+                writeln_spec(&mut stdout, &format!("{}: {:?}", k.as_str(), v), &spec);
             }
         }
 
         if let Some(body) = request.body() {
             writeln(&mut stdout, "");
-            writeln(&mut stdout, body);
+
+            let content: String = formatters
+                .iter()
+                .filter(|fmt| fmt.accept(content_type))
+                .fold(body.clone(), |content, fmt| fmt.format(content).unwrap());
+
+            writeln(&mut stdout, &content);
         }
         writeln(&mut stdout, "");
     }
@@ -102,7 +117,7 @@ fn exec() -> Result<(), FireError> {
     let req = client
         .request(request.verb().into(), request.url().unwrap())
         .timeout(args.timeout())
-        .headers(request.headers());
+        .headers(req_headers);
 
     let req = match request.body() {
         Some(body) => req.body(body.clone()).build().unwrap(),
@@ -175,7 +190,14 @@ fn exec() -> Result<(), FireError> {
 
     if !body.is_empty() {
         let content_type = headers.get("content-type").and_then(|ct| ct.to_str().ok());
-        io::write_body(&mut stdout, content_type, body);
+        let content: String = formatters
+            .iter()
+            .filter(|fmt| fmt.accept(content_type))
+            .fold(body, |content, fmt| fmt.format(content).unwrap());
+
+        io::writeln(&mut stdout, "");
+        io::write(&mut stdout, &content);
+        io::writeln(&mut stdout, "");
     }
 
     Ok(())

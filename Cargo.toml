@@ -20,6 +20,7 @@ lazy_static = "1.4"
 handlebars = "4.3"
 walkdir = "2.3"
 git2 = "0.15"
+syntect = "5.0"
 
 [build-dependencies]
 built = { version = "0.5" }
