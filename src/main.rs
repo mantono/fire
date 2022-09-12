@@ -99,11 +99,12 @@ fn exec() -> Result<(), FireError> {
             for (k, v) in &req_headers {
                 writeln_spec(&mut stdout, &format!("{}: {:?}", k.as_str(), v), &spec);
             }
+            if request.body().is_some() {
+                writeln(&mut stdout, "");
+            }
         }
 
         if let Some(body) = request.body() {
-            writeln(&mut stdout, "");
-
             let content: String = formatters
                 .iter()
                 .filter(|fmt| fmt.accept(content_type))
@@ -186,6 +187,9 @@ fn exec() -> Result<(), FireError> {
                 None => log::warn!("Found header key that was empty or unresolvable"),
             }
         }
+        if !body.is_empty() {
+            io::writeln(&mut stdout, "");
+        }
     }
 
     if !body.is_empty() {
@@ -195,9 +199,10 @@ fn exec() -> Result<(), FireError> {
             .filter(|fmt| fmt.accept(content_type))
             .fold(body, |content, fmt| fmt.format(content).unwrap());
 
-        io::writeln(&mut stdout, "");
         io::write(&mut stdout, &content);
-        io::writeln(&mut stdout, "");
+        if !content.ends_with('\n') {
+            io::writeln(&mut stdout, "");
+        }
     }
 
     Ok(())
