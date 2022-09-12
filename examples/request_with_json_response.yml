@@ -1,0 +1,5 @@
+method: GET
+url: https://api.github.com/licenses/mit
+headers:
+  authorization: Bearer {{GITHUB_TOKEN}}
+  accept: application/json
