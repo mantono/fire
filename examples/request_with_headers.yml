@@ -1,4 +1,4 @@
-verb: GET
+method: GET
 url: api.github.com/octocat?s=Hello+{{USER}}
 headers:
   Accept: application/vnd.github+json
