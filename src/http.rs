@@ -10,6 +10,7 @@ use crate::headers::Appendable;
 
 #[derive(Debug, Deserialize)]
 pub struct HttpRequest {
+    #[serde(alias = "method")]
     verb: Verb,
     url: String,
     body: Option<String>,

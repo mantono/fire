@@ -45,3 +45,4 @@ pub fn write_body(stream: &mut StandardStream, content_type: Option<&str>, body:
     };
     writeln(stream, &format!("\n{body}"));
 }
+
