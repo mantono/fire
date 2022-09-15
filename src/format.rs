@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use syntect::{
     easy::HighlightLines,
     highlighting::{Style, Theme, ThemeSet},
@@ -72,7 +74,8 @@ impl ContentFormatter for JsonPretty {
     }
 
     fn format(&self, content: String) -> Result<String, String> {
-        let json: serde_json::Value = serde_json::from_str(&content).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| format!("Unable to parse body as JSON: {:?}", e))?;
         Ok(serde_json::to_string_pretty(&json).unwrap())
     }
 }
