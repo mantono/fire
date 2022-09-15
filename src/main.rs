@@ -152,6 +152,8 @@ fn exec() -> Result<(), FireError> {
         Err(e) => return Err(FireError::Other(e.to_string())),
     };
 
+    log::debug!("Body of response:\n{body}");
+
     let status_color: Option<Color> = match status.as_u16() {
         200..=299 => Some(Color::Green),
         400..=499 => Some(Color::Yellow),
