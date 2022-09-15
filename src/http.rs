@@ -173,7 +173,7 @@ mod tests {
     fn test_parse_request_from_str() {
         let input = r###"
             # This is a comment
-            verb: POST
+            method: POST
             url: api.github.com/markdown
             headers:
               accept: application/vnd.github+json
