@@ -46,9 +46,3 @@ pub fn write_body(stream: &mut StandardStream, content_type: Option<&str>, body:
     writeln(stream, &format!("\n{body}"));
 }
 
-use syntect::{
-    easy::HighlightLines,
-    highlighting::{Style, ThemeSet},
-    parsing::SyntaxSet,
-    util::{as_24_bit_terminal_escaped, LinesWithEndings},
-};

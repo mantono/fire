@@ -1,5 +1,3 @@
-use std::fmt::format;
-
 use syntect::{
     easy::HighlightLines,
     highlighting::{Style, Theme, ThemeSet},
@@ -18,7 +16,7 @@ pub fn formatters() -> Vec<Box<dyn ContentFormatter>> {
     vec![
         Box::new(JsonPretty::new()),
         Box::new(JsonSyntax::new(theme.clone())),
-        Box::new(XmlSyntax::new(theme.clone())),
+        Box::new(XmlSyntax::new(theme)),
     ]
 }
 
@@ -46,7 +44,7 @@ impl ContentFormatter for JsonSyntax {
 
     fn format(&self, content: String) -> Result<String, String> {
         let syntax = self.syntax_set.find_syntax_by_extension("json").unwrap();
-        let mut high = HighlightLines::new(&syntax, &self.theme);
+        let mut high = HighlightLines::new(syntax, &self.theme);
         let mut out: Vec<String> = Vec::with_capacity(512);
         for line in LinesWithEndings::from(&content) {
             let ranges: Vec<(Style, &str)> = high.highlight_line(line, &self.syntax_set).unwrap();
@@ -104,7 +102,7 @@ impl ContentFormatter for XmlSyntax {
 
     fn format(&self, content: String) -> Result<String, String> {
         let syntax = self.syntax_set.find_syntax_by_extension("xml").unwrap();
-        let mut high = HighlightLines::new(&syntax, &self.theme);
+        let mut high = HighlightLines::new(syntax, &self.theme);
         let mut out: Vec<String> = Vec::with_capacity(512);
         for line in LinesWithEndings::from(&content) {
             let ranges: Vec<(Style, &str)> = high.highlight_line(line, &self.syntax_set).unwrap();
