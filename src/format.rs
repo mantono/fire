@@ -10,14 +10,18 @@ pub trait ContentFormatter {
     fn format(&self, content: String) -> Result<String, String>;
 }
 
-pub fn formatters() -> Vec<Box<dyn ContentFormatter>> {
-    let theme_set = ThemeSet::load_defaults();
-    let theme: Theme = theme_set.themes["base16-mocha.dark"].clone();
-    vec![
-        Box::new(JsonPretty::new()),
-        Box::new(JsonSyntax::new(theme.clone())),
-        Box::new(XmlSyntax::new(theme)),
-    ]
+pub fn formatters(use_colors: bool) -> Vec<Box<dyn ContentFormatter>> {
+    let mut formatters: Vec<Box<dyn ContentFormatter>> = Vec::with_capacity(4);
+    formatters.push(Box::new(JsonPretty::new()));
+
+    if use_colors {
+        let theme_set = ThemeSet::load_defaults();
+        let theme: Theme = theme_set.themes["base16-mocha.dark"].clone();
+        formatters.push(Box::new(JsonSyntax::new(theme.clone())));
+        formatters.push(Box::new(XmlSyntax::new(theme)));
+    }
+
+    formatters
 }
 
 pub struct JsonSyntax {

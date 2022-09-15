@@ -80,7 +80,8 @@ fn exec() -> Result<(), FireError> {
     // 7. Make (and optionally print) request
     let client = reqwest::blocking::Client::new();
 
-    let formatters: Vec<Box<dyn ContentFormatter>> = format::formatters();
+    let syntax_hilighiting: bool = args.use_colors() != termcolor::ColorChoice::Never;
+    let formatters: Vec<Box<dyn ContentFormatter>> = format::formatters(syntax_hilighiting);
 
     let req_headers = request.headers();
 
