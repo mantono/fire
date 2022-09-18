@@ -1,4 +1,5 @@
 mod args;
+mod client;
 mod dbg;
 mod error;
 mod format;
@@ -23,7 +24,6 @@ use crate::prop::Property;
 use crate::template::substitution;
 use clap::Parser;
 use error::FireError;
-use reqwest::blocking::Response;
 use std::process::ExitCode;
 use std::str::FromStr;
 use std::time::Duration;
@@ -78,15 +78,13 @@ fn exec() -> Result<(), FireError> {
     // 5. Add user-agent header if missing
     // 6. Add content-length header if missing
     // 7. Make (and optionally print) request
-    let client = reqwest::blocking::Client::new();
 
     let syntax_hilighiting: bool = args.use_colors() != termcolor::ColorChoice::Never;
     let formatters: Vec<Box<dyn ContentFormatter>> = format::formatters(syntax_hilighiting);
 
     let req_headers = request.headers();
 
-    let content_type: Option<&str> =
-        req_headers.get("content-type").map(|h| h.to_str()).map(|v| v.unwrap());
+    let content_type: Option<&str> = request.header("content-type");
 
     if args.print_request() {
         let title: String = format!("{} {}", request.verb(), request.url().unwrap());
@@ -116,20 +114,13 @@ fn exec() -> Result<(), FireError> {
         writeln(&mut stdout, "");
     }
 
-    let req = client
-        .request(request.verb().into(), request.url().unwrap())
-        .timeout(args.timeout())
-        .headers(req_headers);
-
-    let req = match request.body() {
-        Some(body) => req.body(body.clone()).build().unwrap(),
-        None => req.build().unwrap(),
-    };
+    let client_request: ureq::Request = request.into()?;
 
     let start: Instant = Instant::now();
-    let resp: Result<Response, reqwest::Error> = client.execute(req);
+    let resp: Result<ureq::Response, ureq::Error> = client::send(client_request, *request.body());
+
     let end: Instant = Instant::now();
-    let resp: Response = match resp {
+    let resp: ureq::Response = match resp {
         Ok(response) => response,
         Err(e) => {
             return if e.is_timeout() {

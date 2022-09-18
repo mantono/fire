@@ -1,12 +1,9 @@
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 
-use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
-    Url,
-};
 use serde::Deserialize;
+use url::Url;
 
-use crate::headers::Appendable;
+use crate::headers::{Appendable, Header, HeaderKey, HeaderValue};
 
 #[derive(Debug, Deserialize)]
 pub struct HttpRequest {
@@ -14,7 +11,7 @@ pub struct HttpRequest {
     verb: Verb,
     url: String,
     body: Option<String>,
-    headers: Option<HashMap<String, String>>,
+    headers: Option<HashMap<HeaderKey, HeaderValue>>,
 }
 
 const USER_AGENT_KEY: &str = "user-agent";
@@ -35,13 +32,8 @@ impl HttpRequest {
         }
     }
 
-    pub fn headers(&self) -> HeaderMap<HeaderValue> {
-        let h = self.headers.clone().unwrap_or_default();
-        let mut headers = HeaderMap::with_capacity(h.len());
-        for (key, value) in h {
-            let (k, v) = Self::header(&key, &value);
-            headers.append(k, v);
-        }
+    pub fn headers(&self) -> HashMap<HeaderKey, HeaderValue> {
+        let mut headers: HashMap<HeaderKey, HeaderValue> = self.headers.unwrap_or_default();
 
         if let Some(host) = self.url().unwrap().host_str() {
             headers.put_if_absent(HOST_KEY, host);
@@ -53,10 +45,16 @@ impl HttpRequest {
         headers
     }
 
-    fn header(key: &str, value: &str) -> (HeaderName, HeaderValue) {
-        let k = HeaderName::from_str(key).unwrap();
-        let v = HeaderValue::from_str(value).unwrap();
-        (k, v)
+    pub fn header(&self, key: &str) -> Option<&str> {
+        let key: HeaderKey = match HeaderKey::from_str(key) {
+            Ok(key) => key,
+            Err(_) => return None,
+        };
+
+        match self.headers {
+            Some(headers) => headers.get(&key).map(|v| v.as_str()),
+            None => None,
+        }
     }
 
     pub fn has_body(&self) -> bool {
@@ -140,30 +138,11 @@ pub enum BodyStatus {
     Forbidden,
 }
 
-impl From<Verb> for reqwest::Method {
-    fn from(verb: Verb) -> Self {
-        match verb {
-            Verb::Get => Self::GET,
-            Verb::Head => Self::HEAD,
-            Verb::Post => Self::POST,
-            Verb::Put => Self::PUT,
-            Verb::Delete => Self::DELETE,
-            Verb::Connect => Self::CONNECT,
-            Verb::Options => Self::OPTIONS,
-            Verb::Trace => Self::TRACE,
-            Verb::Patch => Self::PATCH,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
 
-    use reqwest::{
-        header::{HeaderMap, HeaderValue},
-        Url,
-    };
+    use url::Url;
 
     use crate::http::Verb;
 
@@ -186,7 +165,7 @@ mod tests {
               }
         "###;
 
-        let request = HttpRequest::from_str(input).unwrap();
+        /*         let request = HttpRequest::from_str(input).unwrap();
 
         assert_eq!(Verb::Post, request.verb());
 
@@ -210,6 +189,6 @@ mod tests {
         assert_eq!("fire/", &user_agent[..5]);
         assert!(content_size > 0);
 
-        assert!(request.body().is_some())
+        assert!(request.body().is_some()) */
     }
 }
