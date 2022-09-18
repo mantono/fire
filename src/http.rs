@@ -1,12 +1,9 @@
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 
-use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
-    Url,
-};
+use reqwest::Url;
 use serde::Deserialize;
 
-use crate::headers::Appendable;
+use crate::headers::{Appendable, HeaderKey, HeaderValue};
 
 #[derive(Debug, Deserialize)]
 pub struct HttpRequest {
@@ -14,7 +11,7 @@ pub struct HttpRequest {
     verb: Verb,
     url: String,
     body: Option<String>,
-    headers: Option<HashMap<String, String>>,
+    headers: Option<HashMap<HeaderKey, HeaderValue>>,
 }
 
 const USER_AGENT_KEY: &str = "user-agent";
@@ -35,13 +32,8 @@ impl HttpRequest {
         }
     }
 
-    pub fn headers(&self) -> HeaderMap<HeaderValue> {
-        let h = self.headers.clone().unwrap_or_default();
-        let mut headers = HeaderMap::with_capacity(h.len());
-        for (key, value) in h {
-            let (k, v) = Self::header(&key, &value);
-            headers.append(k, v);
-        }
+    pub fn headers(&self) -> HashMap<HeaderKey, HeaderValue> {
+        let mut headers: HashMap<HeaderKey, HeaderValue> = self.headers.clone().unwrap_or_default();
 
         if let Some(host) = self.url().unwrap().host_str() {
             headers.put_if_absent(HOST_KEY, host);
@@ -53,10 +45,21 @@ impl HttpRequest {
         headers
     }
 
-    fn header(key: &str, value: &str) -> (HeaderName, HeaderValue) {
-        let k = HeaderName::from_str(key).unwrap();
-        let v = HeaderValue::from_str(value).unwrap();
-        (k, v)
+    pub fn header(&self, key: &str) -> Option<&str> {
+        let key: HeaderKey = match HeaderKey::from_str(key) {
+            Ok(key) => key,
+            Err(_) => return None,
+        };
+
+        let header: &HashMap<HeaderKey, HeaderValue> = match &self.headers {
+            Some(headers) => headers,
+            None => return None,
+        };
+
+        match header.get(&key) {
+            Some(v) => Some(v.as_str()),
+            None => return None,
+        }
     }
 
     pub fn has_body(&self) -> bool {
@@ -158,14 +161,14 @@ impl From<Verb> for reqwest::Method {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use std::{collections::HashMap, str::FromStr};
 
-    use reqwest::{
-        header::{HeaderMap, HeaderValue},
-        Url,
+    use reqwest::Url;
+
+    use crate::{
+        headers::{HeaderKey, HeaderValue},
+        http::Verb,
     };
-
-    use crate::http::Verb;
 
     use super::HttpRequest;
 
@@ -195,14 +198,11 @@ mod tests {
 
         assert_eq!(expected_url, actual_url);
 
-        let headers: HeaderMap<HeaderValue> = request.headers();
-
-        let content_type = headers.get("content-type").unwrap();
-        let host = headers.get("host").unwrap();
-        let accept = headers.get("accept").unwrap();
-        let user_agent = headers.get("user-agent").unwrap().to_str().unwrap();
-        let content_size: usize =
-            headers.get("content-length").unwrap().to_str().unwrap().parse().unwrap();
+        let content_type = request.header("content-type").unwrap();
+        let host = request.header("host").unwrap();
+        let accept = request.header("accept").unwrap();
+        let user_agent = request.header("user-agent").unwrap();
+        let content_size: usize = request.header("content-length").unwrap().parse().unwrap();
 
         assert_eq!("application/json", content_type);
         assert_eq!("api.github.com", host);

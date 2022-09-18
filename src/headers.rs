@@ -1,23 +1,59 @@
-use std::str::FromStr;
+use std::{collections::HashMap, fmt::Display, str::FromStr};
 
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use reqwest::header::HeaderMap;
+use serde::Deserialize;
 
-fn header(key: &str, value: &str) -> (HeaderName, HeaderValue) {
-    let k = HeaderName::from_str(key).unwrap();
-    let v = HeaderValue::from_str(value).unwrap();
-    (k, v)
+#[derive(Debug, Clone)]
+pub enum HeaderError {
+    Input(String),
+    Key(String),
+    Value(String),
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
+pub struct HeaderKey(String);
+
+impl FromStr for HeaderKey {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(HeaderKey(s.to_ascii_lowercase()))
+    }
+}
+
+impl HeaderKey {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct HeaderValue(String);
+
+impl FromStr for HeaderValue {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(HeaderValue(s.trim().to_string()))
+    }
+}
+
+impl HeaderValue {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 pub trait Appendable {
     fn put_if_absent<T: Into<String>>(&mut self, key: &str, value: T) -> &mut Self;
 }
 
-impl Appendable for HeaderMap {
+impl Appendable for HashMap<HeaderKey, HeaderValue> {
     fn put_if_absent<T: Into<String>>(&mut self, key: &str, value: T) -> &mut Self {
-        if !self.contains_key(key) {
-            let v: String = value.into();
-            let (k, v) = header(key, v.as_str());
-            self.insert(k, v);
+        let key: HeaderKey = key.parse().unwrap();
+        if !self.contains_key(&key) {
+            let value: HeaderValue = value.into().parse().unwrap();
+            self.insert(key, value);
         }
         self
     }

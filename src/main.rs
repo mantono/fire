@@ -24,6 +24,10 @@ use crate::template::substitution;
 use clap::Parser;
 use error::FireError;
 use reqwest::blocking::Response;
+use reqwest::header::HeaderMap;
+use reqwest::header::HeaderName;
+use reqwest::header::HeaderValue;
+use std::ops::Index;
 use std::process::ExitCode;
 use std::str::FromStr;
 use std::time::Duration;
@@ -85,8 +89,7 @@ fn exec() -> Result<(), FireError> {
 
     let req_headers = request.headers();
 
-    let content_type: Option<&str> =
-        req_headers.get("content-type").map(|h| h.to_str()).map(|v| v.unwrap());
+    let content_type: Option<&str> = request.header("content-type");
 
     if args.print_request() {
         let title: String = format!("{} {}", request.verb(), request.url().unwrap());
@@ -116,10 +119,16 @@ fn exec() -> Result<(), FireError> {
         writeln(&mut stdout, "");
     }
 
+    let mut request_headers: HeaderMap<HeaderValue> = HeaderMap::with_capacity(req_headers.len());
+    for (k, v) in req_headers {
+        let k = HeaderName::from_str(k.as_str()).unwrap();
+        request_headers.insert(k, HeaderValue::from_str(v.as_str()).unwrap());
+    }
+
     let req = client
         .request(request.verb().into(), request.url().unwrap())
         .timeout(args.timeout())
-        .headers(req_headers);
+        .headers(request_headers);
 
     let req = match request.body() {
         Some(body) => req.body(body.clone()).build().unwrap(),
