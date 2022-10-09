@@ -171,7 +171,7 @@ impl From<HttpRequest> for ureq::Request {
 pub struct HttpResponse {
     version: String,
     status: u16,
-    headers: HashMap<String, String>,
+    headers: Vec<(String, String)>,
     body: String,
 }
 
@@ -184,12 +184,13 @@ impl HttpResponse {
         self.status
     }
 
-    pub fn headers(&self) -> &HashMap<String, String> {
+    pub fn headers(&self) -> &Vec<(String, String)> {
         &self.headers
     }
 
     pub fn header(&self, key: &str) -> Option<&str> {
-        self.headers.get(key).map(|v| v.as_str())
+        let key: String = key.to_string().to_ascii_lowercase();
+        self.headers.iter().find(|(k, _)| k == &key).map(|(_, v)| v.as_str())
     }
 
     pub fn body(&self) -> &str {
@@ -205,7 +206,7 @@ impl From<ureq::Response> for HttpResponse {
     fn from(resp: ureq::Response) -> Self {
         let version = resp.http_version().to_string();
         let resp_headers: Vec<String> = resp.headers_names();
-        let headers: HashMap<String, String> = resp_headers
+        let headers: Vec<(String, String)> = resp_headers
             .into_iter()
             .map(|key| (key.clone(), resp.header(&key)))
             .filter(|(_, v)| v.is_some())
