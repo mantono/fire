@@ -98,7 +98,7 @@ fn exec() -> Result<(), FireError> {
             let mut spec = ColorSpec::new();
             spec.set_dimmed(true);
             for (k, v) in &req_headers {
-                writeln_spec(&mut stdout, &format!("{}: {:?}", k.as_str(), v), &spec);
+                writeln_spec(&mut stdout, &format!("{}: {}", k.as_str(), v.as_str()), &spec);
             }
             if request.body().is_some() {
                 writeln(&mut stdout, "");
@@ -127,8 +127,6 @@ fn exec() -> Result<(), FireError> {
 
     // 8. Handle respone
     let response: http::HttpResponse = conv(response, url)?;
-
-    let version: &str = response.version();
     let status: u16 = response.status();
 
     let status_color: Option<Color> = match status {
@@ -147,7 +145,7 @@ fn exec() -> Result<(), FireError> {
         (body.len(), String::from("b"))
     };
 
-    let version: String = format!("{version:?} ");
+    let version: String = format!("{} ", response.version());
 
     write(&mut stdout, &version);
 
