@@ -45,7 +45,7 @@ impl HttpRequest {
 
         match self.headers.get(&key) {
             Some(v) => Some(v.as_str()),
-            None => return None,
+            None => None,
         }
     }
 
@@ -68,9 +68,7 @@ impl HttpRequest {
         default.push(header(USER_AGENT_KEY, USER_AGENT)?);
 
         default.into_iter().for_each(|(key, value)| {
-            if !self.headers.contains_key(&key) {
-                self.headers.insert(key, value);
-            }
+            self.headers.entry(key).or_insert(value);
         });
 
         Ok(())
