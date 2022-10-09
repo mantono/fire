@@ -4,9 +4,9 @@
 method: POST
 url: api.github.com/markdown
 headers:
-  Accept: application/vnd.github+json
+  accept: application/vnd.github+json
   # Here is an example of a header that uses variable substitution
-  Authorization: token {{GITHUB_TOKEN}}
+  authorization: token {{GITHUB_TOKEN}}
   content-type: application/json
 
 body: >
