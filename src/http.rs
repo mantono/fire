@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 
-use reqwest::Url;
 use serde::Deserialize;
+use url::Url;
 
 use crate::headers::{header, Error, Header, Key, Value};
 
@@ -157,18 +157,66 @@ pub enum BodyStatus {
     Forbidden,
 }
 
-impl From<Verb> for reqwest::Method {
-    fn from(verb: Verb) -> Self {
-        match verb {
-            Verb::Get => Self::GET,
-            Verb::Head => Self::HEAD,
-            Verb::Post => Self::POST,
-            Verb::Put => Self::PUT,
-            Verb::Delete => Self::DELETE,
-            Verb::Connect => Self::CONNECT,
-            Verb::Options => Self::OPTIONS,
-            Verb::Trace => Self::TRACE,
-            Verb::Patch => Self::PATCH,
+impl From<HttpRequest> for ureq::Request {
+    fn from(req: HttpRequest) -> Self {
+        let url = req.url().unwrap();
+        req.headers
+            .iter()
+            .fold(ureq::request(&req.verb.to_string(), url.as_str()), |r, (key, value)| {
+                r.set(key.as_str(), value.as_str())
+            })
+    }
+}
+
+pub struct HttpResponse {
+    version: String,
+    status: u16,
+    headers: HashMap<String, String>,
+    body: String,
+}
+
+impl HttpResponse {
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    pub fn status(&self) -> u16 {
+        self.status
+    }
+
+    pub fn headers(&self) -> &HashMap<String, String> {
+        &self.headers
+    }
+
+    pub fn header(&self, key: &str) -> Option<&str> {
+        self.headers.get(key).map(|v| v.as_str())
+    }
+
+    pub fn body(&self) -> &str {
+        &self.body
+    }
+
+    pub fn body_len(&self) -> usize {
+        self.body.len()
+    }
+}
+
+impl From<ureq::Response> for HttpResponse {
+    fn from(resp: ureq::Response) -> Self {
+        let version = resp.http_version().to_string();
+        let resp_headers: Vec<String> = resp.headers_names();
+        let headers: HashMap<String, String> = resp_headers
+            .into_iter()
+            .map(|key| (key.clone(), resp.header(&key)))
+            .filter(|(_, v)| v.is_some())
+            .map(|(k, v)| (k, v.unwrap().to_string()))
+            .collect();
+
+        HttpResponse {
+            version,
+            status: resp.status(),
+            headers,
+            body: resp.into_string().unwrap_or_default(),
         }
     }
 }
@@ -177,7 +225,7 @@ impl From<Verb> for reqwest::Method {
 mod tests {
     use std::str::FromStr;
 
-    use reqwest::Url;
+    use url::Url;
 
     use crate::http::Verb;
 

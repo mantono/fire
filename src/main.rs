@@ -23,16 +23,13 @@ use crate::prop::Property;
 use crate::template::substitution;
 use clap::Parser;
 use error::FireError;
-use reqwest::blocking::Response;
-use reqwest::header::HeaderMap;
-use reqwest::header::HeaderName;
-use reqwest::header::HeaderValue;
 use std::process::ExitCode;
 use std::str::FromStr;
 use std::time::Duration;
 use std::time::Instant;
 use template::SubstitutionError;
 use termcolor::{Color, ColorSpec, StandardStream};
+use url::Url;
 
 fn main() -> ExitCode {
     match exec() {
@@ -68,22 +65,21 @@ fn exec() -> Result<(), FireError> {
             }
         }
     };
-    // 2. Read enviroment variables from system environment and extra environments supplied via cli
-    // 3. Apply template substitution
-    let props: Vec<Property> = args.env().expect("Unable to load env vars");
 
+    // 2. Read enviroment variables from system environment and extra environments supplied via cli
+    let props: Vec<Property> = args.env().expect("Unable to load env vars");
     log::debug!("Received properties {:?}", props);
 
+    // 3. Apply template substitution
     let content: String = substitution(file, props)?;
 
     // 4. Parse Validate format of request
     let mut request: HttpRequest = HttpRequest::from_str(&content).unwrap();
-    // 5. Add user-agent header if missing
-    // 6. Add content-length header if missing
+
+    // 5. Add default header, if missing
     request.set_default_headers().unwrap();
 
-    // 7. Make (and optionally print) request
-    let client = reqwest::blocking::Client::new();
+    // 6. Print request (optional)
 
     let syntax_hilighiting: bool = args.use_colors() != termcolor::ColorChoice::Never;
     let formatters: Vec<Box<dyn ContentFormatter>> = format::formatters(syntax_hilighiting);
@@ -120,57 +116,30 @@ fn exec() -> Result<(), FireError> {
         writeln(&mut stdout, "");
     }
 
-    let mut request_headers: HeaderMap<HeaderValue> = HeaderMap::with_capacity(req_headers.len());
-    for (k, v) in req_headers {
-        let k = HeaderName::from_str(k.as_str()).unwrap();
-        request_headers.insert(k, HeaderValue::from_str(v.as_str()).unwrap());
-    }
-
-    let req = client
-        .request(request.verb().into(), request.url().unwrap())
-        .timeout(args.timeout())
-        .headers(request_headers);
-
-    let req = match request.body() {
-        Some(body) => req.body(body.clone()).build().unwrap(),
-        None => req.build().unwrap(),
-    };
+    // 7. Make request
+    let url: Url = request.url().unwrap().clone();
+    let request: ureq::Request = ureq::Request::from(request).timeout(args.timeout());
 
     let start: Instant = Instant::now();
-    let resp: Result<Response, reqwest::Error> = client.execute(req);
+    let response: Result<ureq::Response, ureq::Error> = request.call();
     let end: Instant = Instant::now();
-    let resp: Response = match resp {
-        Ok(response) => response,
-        Err(e) => {
-            return if e.is_timeout() {
-                Err(FireError::Timeout(e.url().unwrap().clone()))
-            } else if e.is_connect() {
-                Err(FireError::Connection(e.url().unwrap().clone()))
-            } else {
-                Err(FireError::Other(e.to_string()))
-            }
-        }
-    };
-
     let duration: Duration = end.duration_since(start);
-    // 8. Print response if successful, or error, if not
 
-    let version = resp.version();
-    let status = resp.status();
-    let headers = resp.headers().clone();
-    let body = match resp.text() {
-        Ok(body) => body,
-        Err(e) => return Err(FireError::Other(e.to_string())),
-    };
+    // 8. Handle respone
+    let response: http::HttpResponse = conv(response, url)?;
 
-    log::debug!("Body of response:\n{body}");
+    let version: &str = response.version();
+    let status: u16 = response.status();
 
-    let status_color: Option<Color> = match status.as_u16() {
+    let status_color: Option<Color> = match status {
         200..=299 => Some(Color::Green),
         400..=499 => Some(Color::Yellow),
         500..=599 => Some(Color::Red),
         _ => None,
     };
+
+    let body: &str = response.body();
+    log::debug!("Body of response:\n{body}");
 
     let (body_len, unit): (usize, String) = if body.len() >= 1024 {
         ((body.len() / 1024), String::from("kb"))
@@ -179,6 +148,7 @@ fn exec() -> Result<(), FireError> {
     };
 
     let version: String = format!("{version:?} ");
+
     write(&mut stdout, &version);
 
     let status: String = status.to_string();
@@ -194,11 +164,8 @@ fn exec() -> Result<(), FireError> {
     if args.headers {
         let mut spec = ColorSpec::new();
         spec.set_dimmed(true);
-        for (k, v) in headers.clone() {
-            match k {
-                Some(k) => writeln_spec(&mut stdout, &format!("{}: {:?}", k, v), &spec),
-                None => log::warn!("Found header key that was empty or unresolvable"),
-            }
+        for (key, value) in response.headers() {
+            writeln_spec(&mut stdout, &format!("{}: {:?}", key, value), &spec);
         }
         if !body.is_empty() {
             io::writeln(&mut stdout, "");
@@ -206,11 +173,11 @@ fn exec() -> Result<(), FireError> {
     }
 
     if !body.is_empty() {
-        let content_type = headers.get("content-type").and_then(|ct| ct.to_str().ok());
+        let content_type = response.header("content-type");
         let content: String = formatters
             .iter()
             .filter(|fmt| fmt.accept(content_type))
-            .fold(body, |content, fmt| fmt.format(content).unwrap());
+            .fold(body.to_string(), |content, fmt| fmt.format(content).unwrap());
 
         io::write(&mut stdout, &content);
         if !content.ends_with('\n') {
@@ -219,6 +186,32 @@ fn exec() -> Result<(), FireError> {
     }
 
     Ok(())
+}
+
+fn conv(
+    res: Result<ureq::Response, ureq::Error>,
+    url: Url,
+) -> Result<http::HttpResponse, FireError> {
+    let response: ureq::Response = match res {
+        Ok(response) => response,
+        Err(e) => match e {
+            ureq::Error::Status(_, response) => response,
+            ureq::Error::Transport(trans) => match trans.kind() {
+                ureq::ErrorKind::Dns => return Err(FireError::Connection(url)),
+                ureq::ErrorKind::ConnectionFailed => return Err(FireError::Connection(url)),
+
+                ureq::ErrorKind::Io => return Err(FireError::Connection(url)),
+                _ => {
+                    return Err(FireError::Other(
+                        trans.message().unwrap_or("Unknown transport error").to_string(),
+                    ))
+                }
+            },
+        },
+    };
+
+    let response: http::HttpResponse = response.into();
+    Ok(response)
 }
 
 impl From<SubstitutionError> for FireError {

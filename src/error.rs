@@ -4,7 +4,7 @@ use std::fmt::Display;
 use std::path::PathBuf;
 use std::process::{self, ExitCode, Termination};
 
-use reqwest::Url;
+use url::Url;
 
 pub trait Error: StdError + Termination {}
 
