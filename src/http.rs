@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display, str::FromStr};
 use reqwest::Url;
 use serde::Deserialize;
 
-use crate::headers::{header, Header, HeaderError, HeaderKey, HeaderValue};
+use crate::headers::{header, Error, Header, Key, Value};
 
 const USER_AGENT_KEY: &str = "user-agent";
 const USER_AGENT: &str = "fire/0.1.0";
@@ -17,7 +17,7 @@ pub struct HttpRequest {
     url: String,
     body: Option<String>,
     #[serde(default)]
-    headers: HashMap<HeaderKey, HeaderValue>,
+    headers: HashMap<Key, Value>,
 }
 
 impl HttpRequest {
@@ -33,12 +33,12 @@ impl HttpRequest {
         }
     }
 
-    pub fn headers(&self) -> HashMap<HeaderKey, HeaderValue> {
+    pub fn headers(&self) -> HashMap<Key, Value> {
         self.headers.clone()
     }
 
     pub fn header(&self, key: &str) -> Option<&str> {
-        let key: HeaderKey = match HeaderKey::from_str(key) {
+        let key: Key = match Key::from_str(key) {
             Ok(key) => key,
             Err(_) => return None,
         };
@@ -53,7 +53,7 @@ impl HttpRequest {
     /// - `user-agent`
     /// - `content-length` (if request has a body)
     /// - `host` (if request URL contains a hostname)
-    pub fn set_default_headers(&mut self) -> Result<(), HeaderError> {
+    pub fn set_default_headers(&mut self) -> Result<(), Error> {
         let mut default: Vec<Header> = Vec::with_capacity(3);
 
         if let Some(host) = self.url().unwrap().host_str() {
