@@ -49,10 +49,12 @@ impl HttpRequest {
         }
     }
 
-    /// Set the _default_ headers:
+    /// Set the _default_ values for headers:
     /// - `user-agent`
     /// - `content-length` (if request has a body)
     /// - `host` (if request URL contains a hostname)
+    ///
+    /// These default values will only be used if no explicit values are set in the request.
     pub fn set_default_headers(&mut self) -> Result<(), Error> {
         let mut default: Vec<Header> = Vec::with_capacity(3);
 
