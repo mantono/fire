@@ -117,7 +117,7 @@ fn exec() -> Result<(), FireError> {
     }
 
     // 7. Make request
-    let url: Url = request.url().unwrap().clone();
+    let url: Url = request.url().unwrap();
     let request: ureq::Request = ureq::Request::from(request).timeout(args.timeout());
 
     let start: Instant = Instant::now();
