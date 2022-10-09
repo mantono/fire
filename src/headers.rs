@@ -1,24 +1,60 @@
 use std::str::FromStr;
 
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use serde::Deserialize;
 
-fn header(key: &str, value: &str) -> (HeaderName, HeaderValue) {
-    let k = HeaderName::from_str(key).unwrap();
-    let v = HeaderValue::from_str(value).unwrap();
-    (k, v)
+pub type Header = (Key, Value);
+
+#[derive(Debug, Clone)]
+pub enum Error {
+    Input(String),
+    Key(String),
+    Value(String),
 }
 
-pub trait Appendable {
-    fn put_if_absent<T: Into<String>>(&mut self, key: &str, value: T) -> &mut Self;
-}
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
+pub struct Key(String);
 
-impl Appendable for HeaderMap {
-    fn put_if_absent<T: Into<String>>(&mut self, key: &str, value: T) -> &mut Self {
-        if !self.contains_key(key) {
-            let v: String = value.into();
-            let (k, v) = header(key, v.as_str());
-            self.insert(k, v);
-        }
-        self
+impl FromStr for Key {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Key(s.to_ascii_lowercase()))
     }
+}
+
+impl Key {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Value(String);
+
+impl FromStr for Value {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Value(s.trim().to_string()))
+    }
+}
+
+impl Value {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+pub fn header(key: &str, value: &str) -> Result<Header, Error> {
+    let key: Key = match Key::from_str(key) {
+        Ok(key) => key,
+        Err(()) => return Err(Error::Key(key.to_string())),
+    };
+
+    let value: Value = match Value::from_str(value) {
+        Ok(value) => value,
+        Err(()) => return Err(Error::Value(value.to_string())),
+    };
+
+    Ok((key, value))
 }

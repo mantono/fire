@@ -1,12 +1,14 @@
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 
-use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
-    Url,
-};
+use reqwest::Url;
 use serde::Deserialize;
 
-use crate::headers::Appendable;
+use crate::headers::{header, Error, Header, Key, Value};
+
+const USER_AGENT_KEY: &str = "user-agent";
+const USER_AGENT: &str = "fire/0.1.0";
+const CONTENT_LENGTH_KEY: &str = "content-length";
+const HOST_KEY: &str = "host";
 
 #[derive(Debug, Deserialize)]
 pub struct HttpRequest {
@@ -14,13 +16,9 @@ pub struct HttpRequest {
     verb: Verb,
     url: String,
     body: Option<String>,
-    headers: Option<HashMap<String, String>>,
+    #[serde(default)]
+    headers: HashMap<Key, Value>,
 }
-
-const USER_AGENT_KEY: &str = "user-agent";
-const USER_AGENT: &str = "fire/0.1.0";
-const CONTENT_LENGTH_KEY: &str = "content-length";
-const HOST_KEY: &str = "host";
 
 impl HttpRequest {
     pub fn verb(&self) -> Verb {
@@ -35,28 +33,47 @@ impl HttpRequest {
         }
     }
 
-    pub fn headers(&self) -> HeaderMap<HeaderValue> {
-        let h = self.headers.clone().unwrap_or_default();
-        let mut headers = HeaderMap::with_capacity(h.len());
-        for (key, value) in h {
-            let (k, v) = Self::header(&key, &value);
-            headers.append(k, v);
-        }
-
-        if let Some(host) = self.url().unwrap().host_str() {
-            headers.put_if_absent(HOST_KEY, host);
-        }
-
-        let body_size: String = self.body_size().to_string();
-        headers.put_if_absent(USER_AGENT_KEY, USER_AGENT);
-        headers.put_if_absent(CONTENT_LENGTH_KEY, body_size);
-        headers
+    pub fn headers(&self) -> HashMap<Key, Value> {
+        self.headers.clone()
     }
 
-    fn header(key: &str, value: &str) -> (HeaderName, HeaderValue) {
-        let k = HeaderName::from_str(key).unwrap();
-        let v = HeaderValue::from_str(value).unwrap();
-        (k, v)
+    pub fn header(&self, key: &str) -> Option<&str> {
+        let key: Key = match Key::from_str(key) {
+            Ok(key) => key,
+            Err(_) => return None,
+        };
+
+        match self.headers.get(&key) {
+            Some(v) => Some(v.as_str()),
+            None => None,
+        }
+    }
+
+    /// Set the _default_ values for headers:
+    /// - `user-agent`
+    /// - `content-length` (if request has a body)
+    /// - `host` (if request URL contains a hostname)
+    ///
+    /// These default values will only be used if no explicit values are set in the request.
+    pub fn set_default_headers(&mut self) -> Result<(), Error> {
+        let mut default: Vec<Header> = Vec::with_capacity(3);
+
+        if let Some(host) = self.url().unwrap().host_str() {
+            default.push(header(HOST_KEY, host)?);
+        }
+
+        if self.has_body() {
+            let content_length = self.body_size().to_string();
+            default.push(header(CONTENT_LENGTH_KEY, &content_length)?);
+        }
+
+        default.push(header(USER_AGENT_KEY, USER_AGENT)?);
+
+        default.into_iter().for_each(|(key, value)| {
+            self.headers.entry(key).or_insert(value);
+        });
+
+        Ok(())
     }
 
     pub fn has_body(&self) -> bool {
@@ -160,10 +177,7 @@ impl From<Verb> for reqwest::Method {
 mod tests {
     use std::str::FromStr;
 
-    use reqwest::{
-        header::{HeaderMap, HeaderValue},
-        Url,
-    };
+    use reqwest::Url;
 
     use crate::http::Verb;
 
@@ -186,7 +200,8 @@ mod tests {
               }
         "###;
 
-        let request = HttpRequest::from_str(input).unwrap();
+        let mut request = HttpRequest::from_str(input).unwrap();
+        request.set_default_headers().unwrap();
 
         assert_eq!(Verb::Post, request.verb());
 
@@ -195,14 +210,11 @@ mod tests {
 
         assert_eq!(expected_url, actual_url);
 
-        let headers: HeaderMap<HeaderValue> = request.headers();
-
-        let content_type = headers.get("content-type").unwrap();
-        let host = headers.get("host").unwrap();
-        let accept = headers.get("accept").unwrap();
-        let user_agent = headers.get("user-agent").unwrap().to_str().unwrap();
-        let content_size: usize =
-            headers.get("content-length").unwrap().to_str().unwrap().parse().unwrap();
+        let content_type = request.header("content-type").unwrap();
+        let host = request.header("host").unwrap();
+        let accept = request.header("accept").unwrap();
+        let user_agent = request.header("user-agent").unwrap();
+        let content_size: usize = request.header("content-length").unwrap().parse().unwrap();
 
         assert_eq!("application/json", content_type);
         assert_eq!("api.github.com", host);
