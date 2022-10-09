@@ -1,7 +1,8 @@
-use std::{collections::HashMap, fmt::Display, str::FromStr};
+use std::str::FromStr;
 
-use reqwest::header::HeaderMap;
 use serde::Deserialize;
+
+pub type Header = (HeaderKey, HeaderValue);
 
 #[derive(Debug, Clone)]
 pub enum HeaderError {
@@ -44,17 +45,16 @@ impl HeaderValue {
     }
 }
 
-pub trait Appendable {
-    fn put_if_absent<T: Into<String>>(&mut self, key: &str, value: T) -> &mut Self;
-}
+pub fn header(key: &str, value: &str) -> Result<Header, HeaderError> {
+    let key: HeaderKey = match HeaderKey::from_str(key) {
+        Ok(key) => key,
+        Err(()) => return Err(HeaderError::Key(key.to_string())),
+    };
 
-impl Appendable for HashMap<HeaderKey, HeaderValue> {
-    fn put_if_absent<T: Into<String>>(&mut self, key: &str, value: T) -> &mut Self {
-        let key: HeaderKey = key.parse().unwrap();
-        if !self.contains_key(&key) {
-            let value: HeaderValue = value.into().parse().unwrap();
-            self.insert(key, value);
-        }
-        self
-    }
+    let value: HeaderValue = match HeaderValue::from_str(value) {
+        Ok(value) => value,
+        Err(()) => return Err(HeaderError::Value(value.to_string())),
+    };
+
+    Ok((key, value))
 }

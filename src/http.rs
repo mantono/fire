@@ -3,7 +3,12 @@ use std::{collections::HashMap, fmt::Display, str::FromStr};
 use reqwest::Url;
 use serde::Deserialize;
 
-use crate::headers::{Appendable, HeaderKey, HeaderValue};
+use crate::headers::{header, Header, HeaderError, HeaderKey, HeaderValue};
+
+const USER_AGENT_KEY: &str = "user-agent";
+const USER_AGENT: &str = "fire/0.1.0";
+const CONTENT_LENGTH_KEY: &str = "content-length";
+const HOST_KEY: &str = "host";
 
 #[derive(Debug, Deserialize)]
 pub struct HttpRequest {
@@ -11,13 +16,9 @@ pub struct HttpRequest {
     verb: Verb,
     url: String,
     body: Option<String>,
-    headers: Option<HashMap<HeaderKey, HeaderValue>>,
+    #[serde(default)]
+    headers: HashMap<HeaderKey, HeaderValue>,
 }
-
-const USER_AGENT_KEY: &str = "user-agent";
-const USER_AGENT: &str = "fire/0.1.0";
-const CONTENT_LENGTH_KEY: &str = "content-length";
-const HOST_KEY: &str = "host";
 
 impl HttpRequest {
     pub fn verb(&self) -> Verb {
@@ -33,16 +34,7 @@ impl HttpRequest {
     }
 
     pub fn headers(&self) -> HashMap<HeaderKey, HeaderValue> {
-        let mut headers: HashMap<HeaderKey, HeaderValue> = self.headers.clone().unwrap_or_default();
-
-        if let Some(host) = self.url().unwrap().host_str() {
-            headers.put_if_absent(HOST_KEY, host);
-        }
-
-        let body_size: String = self.body_size().to_string();
-        headers.put_if_absent(USER_AGENT_KEY, USER_AGENT);
-        headers.put_if_absent(CONTENT_LENGTH_KEY, body_size);
-        headers
+        self.headers.clone()
     }
 
     pub fn header(&self, key: &str) -> Option<&str> {
@@ -51,15 +43,37 @@ impl HttpRequest {
             Err(_) => return None,
         };
 
-        let header: &HashMap<HeaderKey, HeaderValue> = match &self.headers {
-            Some(headers) => headers,
-            None => return None,
-        };
-
-        match header.get(&key) {
+        match self.headers.get(&key) {
             Some(v) => Some(v.as_str()),
             None => return None,
         }
+    }
+
+    /// Set the _default_ headers:
+    /// - `user-agent`
+    /// - `content-length` (if request has a body)
+    /// - `host` (if request URL contains a hostname)
+    pub fn set_default_headers(&mut self) -> Result<(), HeaderError> {
+        let mut default: Vec<Header> = Vec::with_capacity(3);
+
+        if let Some(host) = self.url().unwrap().host_str() {
+            default.push(header(HOST_KEY, host)?);
+        }
+
+        if self.has_body() {
+            let content_length = self.body_size().to_string();
+            default.push(header(CONTENT_LENGTH_KEY, &content_length)?);
+        }
+
+        default.push(header(USER_AGENT_KEY, USER_AGENT)?);
+
+        default.into_iter().for_each(|(key, value)| {
+            if !self.headers.contains_key(&key) {
+                self.headers.insert(key, value);
+            }
+        });
+
+        Ok(())
     }
 
     pub fn has_body(&self) -> bool {
@@ -161,14 +175,11 @@ impl From<Verb> for reqwest::Method {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, str::FromStr};
+    use std::str::FromStr;
 
     use reqwest::Url;
 
-    use crate::{
-        headers::{HeaderKey, HeaderValue},
-        http::Verb,
-    };
+    use crate::http::Verb;
 
     use super::HttpRequest;
 
@@ -189,7 +200,8 @@ mod tests {
               }
         "###;
 
-        let request = HttpRequest::from_str(input).unwrap();
+        let mut request = HttpRequest::from_str(input).unwrap();
+        request.set_default_headers().unwrap();
 
         assert_eq!(Verb::Post, request.verb());
 

@@ -27,7 +27,6 @@ use reqwest::blocking::Response;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
-use std::ops::Index;
 use std::process::ExitCode;
 use std::str::FromStr;
 use std::time::Duration;
@@ -78,9 +77,11 @@ fn exec() -> Result<(), FireError> {
     let content: String = substitution(file, props)?;
 
     // 4. Parse Validate format of request
-    let request: HttpRequest = HttpRequest::from_str(&content).unwrap();
+    let mut request: HttpRequest = HttpRequest::from_str(&content).unwrap();
     // 5. Add user-agent header if missing
     // 6. Add content-length header if missing
+    request.set_default_headers().unwrap();
+
     // 7. Make (and optionally print) request
     let client = reqwest::blocking::Client::new();
 
