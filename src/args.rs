@@ -171,7 +171,7 @@ impl Args {
 
         let end: PathBuf = request_file.canonicalize().unwrap().parent().unwrap().to_path_buf();
 
-        let start: PathBuf = match Self::git_root() {
+        let start: PathBuf = match Self::git_root(&end) {
             Some(root) => root.parent().unwrap().to_path_buf(),
             None => end.clone(),
         };
@@ -198,9 +198,9 @@ impl Args {
             .collect()
     }
 
-    fn git_root() -> Option<PathBuf> {
+    fn git_root(path: &Path) -> Option<PathBuf> {
         let ceiling = ["/"];
-        Repository::open_ext(".", RepositoryOpenFlags::CROSS_FS, ceiling)
+        Repository::open_ext(path, RepositoryOpenFlags::CROSS_FS, ceiling)
             .map(|p| p.path().to_owned())
             .ok()
     }
