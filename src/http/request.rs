@@ -13,9 +13,7 @@ pub fn call(request: HttpRequest, timeout: Duration) -> Result<HttpResponse, Tra
         None => request.call(),
     };
 
-    // 8. Handle respone
-    let response: HttpResponse = conv(response, url)?;
-    Ok(response)
+    conv(response, url)
 }
 
 fn conv(
