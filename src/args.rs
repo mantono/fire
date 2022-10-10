@@ -218,9 +218,7 @@ fn git_root(path: &Path) -> Result<Option<PathBuf>, std::io::Error> {
 fn is_git_dir(entry: &std::fs::DirEntry) -> Result<bool, std::io::Error> {
     let is_dir: bool = entry.file_type()?.is_dir();
 
-    if !is_dir {
-        Ok(false)
-    } else if entry.file_name() != ".git" {
+    if !is_dir || entry.file_name() != ".git" {
         Ok(false)
     } else {
         let found: bool = std::fs::read_dir(entry.path())?
