@@ -5,6 +5,14 @@ authors = ["Anton Österberg <anton@42x.io>"]
 edition = "2021"
 build = "build.rs"
 
+[lib]
+name = "http"
+path = "src/http/lib.rs"
+
+[[bin]]
+name = "fire-bin"
+path = "src/main.rs"
+
 [dependencies]
 clap = { version = "3.2", features = ["cargo", "color", "derive", "suggestions"] }
 ureq = "2.5"

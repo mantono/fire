@@ -1,4 +1,7 @@
-use std::{collections::HashMap, fmt::Display, str::FromStr};
+pub mod headers;
+pub mod request;
+
+use std::{collections::HashMap, fmt::Display, str::FromStr, time::Duration};
 
 use serde::Deserialize;
 use url::Url;
@@ -225,13 +228,21 @@ impl From<ureq::Response> for HttpResponse {
     }
 }
 
+#[derive(Debug)]
+pub enum TransportError {
+    Timeout(Url, Duration),
+    Connection(Url),
+    UnknownHost(Url),
+    Other(String),
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
 
     use url::Url;
 
-    use crate::http::Verb;
+    use crate::Verb;
 
     use super::HttpRequest;
 
