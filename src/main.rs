@@ -118,10 +118,14 @@ fn exec() -> Result<(), FireError> {
 
     // 7. Make request
     let url: Url = request.url().unwrap();
-    let request: ureq::Request = ureq::Request::from(request).timeout(args.timeout());
+    let (request, body): (ureq::Request, Option<String>) = request.into();
+    let request = request.timeout(args.timeout());
 
     let start: Instant = Instant::now();
-    let response: Result<ureq::Response, ureq::Error> = request.call();
+    let response: Result<ureq::Response, ureq::Error> = match body {
+        Some(body) => request.send_string(&body),
+        None => request.call(),
+    };
     let end: Instant = Instant::now();
     let duration: Duration = end.duration_since(start);
 

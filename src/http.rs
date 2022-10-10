@@ -157,14 +157,17 @@ pub enum BodyStatus {
     Forbidden,
 }
 
-impl From<HttpRequest> for ureq::Request {
+impl From<HttpRequest> for (ureq::Request, Option<String>) {
     fn from(req: HttpRequest) -> Self {
         let url = req.url().unwrap();
-        req.headers
+        let request: ureq::Request = req
+            .headers
             .iter()
             .fold(ureq::request(&req.verb.to_string(), url.as_str()), |r, (key, value)| {
                 r.set(key.as_str(), value.as_str())
-            })
+            });
+
+        (request, req.body().clone())
     }
 }
 
