@@ -1,5 +1,5 @@
 use std::{
-    fs::{DirEntry, ReadDir},
+    fs::DirEntry,
     path::{Path, PathBuf},
     time::Duration,
 };
