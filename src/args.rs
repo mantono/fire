@@ -204,7 +204,7 @@ fn git_root(path: &Path) -> Result<Option<PathBuf>, std::io::Error> {
         .read_dir()?
         .into_iter()
         .filter_map(|entry| entry.ok())
-        .find(|entry| is_git_dir(&entry).unwrap_or(false));
+        .find(|entry| is_git_dir(entry).unwrap_or(false));
 
     match dir {
         Some(dir) => Ok(Some(dir.path())),
