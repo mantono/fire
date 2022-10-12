@@ -2,8 +2,6 @@ mod args;
 mod dbg;
 mod error;
 mod format;
-mod headers;
-mod http;
 mod io;
 mod logger;
 mod prop;
@@ -13,7 +11,6 @@ use crate::args::Args;
 use crate::dbg::dbg_info;
 use crate::error::exit;
 use crate::format::ContentFormatter;
-use crate::http::HttpRequest;
 use crate::io::write;
 use crate::io::write_color;
 use crate::io::writeln;
@@ -23,13 +20,13 @@ use crate::prop::Property;
 use crate::template::substitution;
 use clap::Parser;
 use error::FireError;
+use httpx::HttpRequest;
 use std::process::ExitCode;
 use std::str::FromStr;
 use std::time::Duration;
 use std::time::Instant;
 use template::SubstitutionError;
 use termcolor::{Color, ColorSpec, StandardStream};
-use url::Url;
 
 fn main() -> ExitCode {
     match exec() {
@@ -89,7 +86,7 @@ fn exec() -> Result<(), FireError> {
     let content_type: Option<&str> = request.header("content-type");
 
     if args.print_request() {
-        let title: String = format!("{} {}", request.verb(), request.url().unwrap());
+        let title: String = format!("{} {}", request.method(), request.url().unwrap());
         writeln(&mut stdout, &title);
         let border = "━".repeat(title.len());
         writeln(&mut stdout, &border);
@@ -98,7 +95,11 @@ fn exec() -> Result<(), FireError> {
             let mut spec = ColorSpec::new();
             spec.set_dimmed(true);
             for (k, v) in &req_headers {
-                writeln_spec(&mut stdout, &format!("{}: {}", k.as_str(), v.as_str()), &spec);
+                writeln_spec(
+                    &mut stdout,
+                    &format!("{}: {}", k.as_str(), v.to_str().unwrap()),
+                    &spec,
+                );
             }
             if request.body().is_some() {
                 writeln(&mut stdout, "");
@@ -117,20 +118,12 @@ fn exec() -> Result<(), FireError> {
     }
 
     // 7. Make request
-    let url: Url = request.url().unwrap();
-    let (request, body): (ureq::Request, Option<String>) = request.into();
-    let request = request.timeout(args.timeout());
-
     let start: Instant = Instant::now();
-    let response: Result<ureq::Response, ureq::Error> = match body {
-        Some(body) => request.send_string(&body),
-        None => request.call(),
-    };
+    let response: httpx::HttpResponse = httpx::request::call(request, args.timeout())?;
     let end: Instant = Instant::now();
     let duration: Duration = end.duration_since(start);
 
     // 8. Handle respone
-    let response: http::HttpResponse = conv(response, url)?;
     let status: u16 = response.status();
 
     let status_color: Option<Color> = match status {
@@ -190,36 +183,21 @@ fn exec() -> Result<(), FireError> {
     Ok(())
 }
 
-fn conv(
-    res: Result<ureq::Response, ureq::Error>,
-    url: Url,
-) -> Result<http::HttpResponse, FireError> {
-    let response: ureq::Response = match res {
-        Ok(response) => response,
-        Err(e) => match e {
-            ureq::Error::Status(_, response) => response,
-            ureq::Error::Transport(trans) => match trans.kind() {
-                ureq::ErrorKind::Dns => return Err(FireError::Connection(url)),
-                ureq::ErrorKind::ConnectionFailed => return Err(FireError::Connection(url)),
-
-                ureq::ErrorKind::Io => return Err(FireError::Connection(url)),
-                _ => {
-                    return Err(FireError::Other(
-                        trans.message().unwrap_or("Unknown transport error").to_string(),
-                    ))
-                }
-            },
-        },
-    };
-
-    let response: http::HttpResponse = response.into();
-    Ok(response)
-}
-
 impl From<SubstitutionError> for FireError {
     fn from(e: SubstitutionError) -> Self {
         match e {
             SubstitutionError::MissingValue(err) => FireError::Template(err),
+        }
+    }
+}
+
+impl From<httpx::TransportError> for FireError {
+    fn from(e: httpx::TransportError) -> Self {
+        match e {
+            httpx::TransportError::Timeout(url, _) => Self::Timeout(url),
+            httpx::TransportError::Connection(url) => Self::Connection(url),
+            httpx::TransportError::UnknownHost(url) => Self::Connection(url),
+            httpx::TransportError::Other(msg) => Self::Other(msg),
         }
     }
 }
