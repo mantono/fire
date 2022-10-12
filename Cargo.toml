@@ -1,3 +1,6 @@
+[workspace]
+members = ["http"]
+
 [package]
 name = "fire"
 version = "0.1.0"
@@ -5,17 +8,8 @@ authors = ["Anton Österberg <anton@42x.io>"]
 edition = "2021"
 build = "build.rs"
 
-[lib]
-name = "http"
-path = "src/http/lib.rs"
-
-[[bin]]
-name = "fire"
-path = "src/main.rs"
-
 [dependencies]
 clap = { version = "3.2", features = ["cargo", "color", "derive", "suggestions"] }
-ureq = "2.5"
 log = "0.4"
 env_logger = "0.9"
 termcolor = "1.1"
@@ -26,6 +20,7 @@ url = "2.3"
 handlebars = "4.3"
 walkdir = "2.3"
 syntect = "5.0"
+http = { path = "http" }
 
 [build-dependencies]
 built = { version = "0.5" }

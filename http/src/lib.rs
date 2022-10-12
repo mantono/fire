@@ -1,6 +1,9 @@
 pub mod headers;
 pub mod request;
 
+extern crate serde;
+extern crate url;
+
 use std::{collections::HashMap, fmt::Display, str::FromStr, time::Duration};
 
 use serde::Deserialize;
