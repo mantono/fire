@@ -1,5 +1,5 @@
 method: GET
 url: api.github.com/octocat?s=Hello+{{USER}}
 headers:
-  accept: application/vnd.github+json, application/json
+  accept: application/vnd.github+json, application/json, application/octocat-stream
   authorization: token {{GITHUB_TOKEN}}

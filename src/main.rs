@@ -20,14 +20,13 @@ use crate::prop::Property;
 use crate::template::substitution;
 use clap::Parser;
 use error::FireError;
-use http::HttpRequest;
+use httpx::HttpRequest;
 use std::process::ExitCode;
 use std::str::FromStr;
 use std::time::Duration;
 use std::time::Instant;
 use template::SubstitutionError;
 use termcolor::{Color, ColorSpec, StandardStream};
-use url::Url;
 
 fn main() -> ExitCode {
     match exec() {
@@ -87,7 +86,7 @@ fn exec() -> Result<(), FireError> {
     let content_type: Option<&str> = request.header("content-type");
 
     if args.print_request() {
-        let title: String = format!("{} {}", request.verb(), request.url().unwrap());
+        let title: String = format!("{} {}", request.method(), request.url().unwrap());
         writeln(&mut stdout, &title);
         let border = "━".repeat(title.len());
         writeln(&mut stdout, &border);
@@ -96,7 +95,11 @@ fn exec() -> Result<(), FireError> {
             let mut spec = ColorSpec::new();
             spec.set_dimmed(true);
             for (k, v) in &req_headers {
-                writeln_spec(&mut stdout, &format!("{}: {}", k.as_str(), v.as_str()), &spec);
+                writeln_spec(
+                    &mut stdout,
+                    &format!("{}: {}", k.as_str(), v.to_str().unwrap()),
+                    &spec,
+                );
             }
             if request.body().is_some() {
                 writeln(&mut stdout, "");
@@ -116,7 +119,7 @@ fn exec() -> Result<(), FireError> {
 
     // 7. Make request
     let start: Instant = Instant::now();
-    let response: http::HttpResponse = http::request::call(request, args.timeout())?;
+    let response: httpx::HttpResponse = httpx::request::call(request, args.timeout())?;
     let end: Instant = Instant::now();
     let duration: Duration = end.duration_since(start);
 
@@ -188,13 +191,13 @@ impl From<SubstitutionError> for FireError {
     }
 }
 
-impl From<http::TransportError> for FireError {
-    fn from(e: http::TransportError) -> Self {
+impl From<httpx::TransportError> for FireError {
+    fn from(e: httpx::TransportError) -> Self {
         match e {
-            http::TransportError::Timeout(url, _) => Self::Timeout(url),
-            http::TransportError::Connection(url) => Self::Connection(url),
-            http::TransportError::UnknownHost(url) => Self::Connection(url),
-            http::TransportError::Other(msg) => Self::Other(msg),
+            httpx::TransportError::Timeout(url, _) => Self::Timeout(url),
+            httpx::TransportError::Connection(url) => Self::Connection(url),
+            httpx::TransportError::UnknownHost(url) => Self::Connection(url),
+            httpx::TransportError::Other(msg) => Self::Other(msg),
         }
     }
 }

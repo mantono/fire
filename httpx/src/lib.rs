@@ -1,15 +1,14 @@
-pub mod headers;
 pub mod request;
 
+extern crate http;
 extern crate serde;
 extern crate url;
 
-use std::{collections::HashMap, fmt::Display, str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration};
 
+use http::{header::HeaderName, HeaderMap, HeaderValue, Method};
 use serde::Deserialize;
 use url::Url;
-
-use crate::headers::{header, Error, Header, Key, Value};
 
 const USER_AGENT_KEY: &str = "user-agent";
 const USER_AGENT: &str = "fire/0.1.0";
@@ -18,17 +17,19 @@ const HOST_KEY: &str = "host";
 
 #[derive(Debug, Deserialize)]
 pub struct HttpRequest {
-    #[serde(alias = "method")]
-    verb: Verb,
+    #[serde(alias = "verb")]
+    #[serde(with = "http_serde::method")]
+    method: Method,
     url: String,
     body: Option<String>,
     #[serde(default)]
-    headers: HashMap<Key, Value>,
+    #[serde(with = "http_serde::header_map")]
+    headers: HeaderMap,
 }
 
 impl HttpRequest {
-    pub fn verb(&self) -> Verb {
-        self.verb
+    pub fn method(&self) -> Method {
+        self.method.clone()
     }
 
     pub fn url(&self) -> Result<Url, url::ParseError> {
@@ -39,20 +40,13 @@ impl HttpRequest {
         }
     }
 
-    pub fn headers(&self) -> HashMap<Key, Value> {
+    pub fn headers(&self) -> HeaderMap {
         self.headers.clone()
     }
 
     pub fn header(&self, key: &str) -> Option<&str> {
-        let key: Key = match Key::from_str(key) {
-            Ok(key) => key,
-            Err(_) => return None,
-        };
-
-        match self.headers.get(&key) {
-            Some(v) => Some(v.as_str()),
-            None => None,
-        }
+        let key = HeaderName::from_str(key).ok()?;
+        self.headers.get(key).and_then(|v| v.to_str().ok())
     }
 
     /// Set the _default_ values for headers:
@@ -61,7 +55,7 @@ impl HttpRequest {
     /// - `host` (if request URL contains a hostname)
     ///
     /// These default values will only be used if no explicit values are set in the request.
-    pub fn set_default_headers(&mut self) -> Result<(), Error> {
+    pub fn set_default_headers(&mut self) -> Result<(), InvalidHeader> {
         let mut default: Vec<Header> = Vec::with_capacity(3);
 
         if let Some(host) = self.url().unwrap().host_str() {
@@ -91,14 +85,30 @@ impl HttpRequest {
     }
 
     pub fn body_size(&self) -> usize {
-        match self.verb {
-            Verb::Post | Verb::Put | Verb::Delete | Verb::Patch => match &self.body {
+        match self.method {
+            Method::PUT | Method::POST | Method::DELETE | Method::PATCH => match &self.body {
                 Some(b) => b.len(),
                 None => 0,
             },
             _ => 0,
         }
     }
+}
+
+pub type Header = (HeaderName, HeaderValue);
+
+fn header(key: &str, value: &str) -> Result<Header, InvalidHeader> {
+    let key = HeaderName::from_str(key).map_err(|_| InvalidHeader::Key(key.to_string()))?;
+    let value =
+        HeaderValue::from_str(value).map_err(|_| InvalidHeader::Value(value.to_string()))?;
+
+    Ok((key, value))
+}
+
+#[derive(Debug)]
+pub enum InvalidHeader {
+    Key(String),
+    Value(String),
 }
 
 impl FromStr for HttpRequest {
@@ -109,68 +119,14 @@ impl FromStr for HttpRequest {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all(deserialize = "UPPERCASE"))]
-pub enum Verb {
-    Get,
-    Head,
-    Post,
-    Put,
-    Delete,
-    Connect,
-    Options,
-    Trace,
-    Patch,
-}
-
-impl Verb {
-    pub fn body(&self) -> BodyStatus {
-        match self {
-            Verb::Get => BodyStatus::Discouraged,
-            Verb::Head => BodyStatus::Discouraged,
-            Verb::Post => BodyStatus::Permitted,
-            Verb::Put => BodyStatus::Permitted,
-            Verb::Delete => BodyStatus::Discouraged,
-            Verb::Connect => BodyStatus::Discouraged,
-            Verb::Options => BodyStatus::Discouraged,
-            Verb::Trace => BodyStatus::Forbidden,
-            Verb::Patch => BodyStatus::Permitted,
-        }
-    }
-}
-
-impl Display for Verb {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s: &str = match self {
-            Verb::Get => "GET",
-            Verb::Head => "HEAD",
-            Verb::Post => "POST",
-            Verb::Put => "PUT",
-            Verb::Delete => "DELETE",
-            Verb::Connect => "CONNECT",
-            Verb::Options => "OPTIONS",
-            Verb::Trace => "TRACE",
-            Verb::Patch => "PATCH",
-        };
-
-        f.write_str(s)
-    }
-}
-
-pub enum BodyStatus {
-    Permitted,
-    Discouraged,
-    Forbidden,
-}
-
 impl From<HttpRequest> for (ureq::Request, Option<String>) {
     fn from(req: HttpRequest) -> Self {
         let url = req.url().unwrap();
         let request: ureq::Request = req
             .headers
             .iter()
-            .fold(ureq::request(&req.verb.to_string(), url.as_str()), |r, (key, value)| {
-                r.set(key.as_str(), value.as_str())
+            .fold(ureq::request(req.method.as_ref(), url.as_str()), |r, (key, value)| {
+                r.set(key.as_str(), value.to_str().unwrap())
             });
 
         (request, req.body().clone())
@@ -180,7 +136,7 @@ impl From<HttpRequest> for (ureq::Request, Option<String>) {
 pub struct HttpResponse {
     version: String,
     status: u16,
-    headers: Vec<(String, String)>,
+    headers: HeaderMap,
     body: String,
 }
 
@@ -193,13 +149,13 @@ impl HttpResponse {
         self.status
     }
 
-    pub fn headers(&self) -> &Vec<(String, String)> {
+    pub fn headers(&self) -> &HeaderMap {
         &self.headers
     }
 
     pub fn header(&self, key: &str) -> Option<&str> {
-        let key: String = key.to_string().to_ascii_lowercase();
-        self.headers.iter().find(|(k, _)| k == &key).map(|(_, v)| v.as_str())
+        let key = HeaderName::from_str(key).ok()?;
+        self.headers.get(key).and_then(|v| v.to_str().ok())
     }
 
     pub fn body(&self) -> &str {
@@ -215,12 +171,15 @@ impl From<ureq::Response> for HttpResponse {
     fn from(resp: ureq::Response) -> Self {
         let version = resp.http_version().to_string();
         let resp_headers: Vec<String> = resp.headers_names();
-        let headers: Vec<(String, String)> = resp_headers
+        let headers: HeaderMap = resp_headers
             .into_iter()
             .map(|key| (key.clone(), resp.header(&key)))
-            .filter(|(_, v)| v.is_some())
-            .map(|(k, v)| (k, v.unwrap().to_string()))
+            .filter_map(|(key, opt)| opt.map(|v| (key, v)))
+            .filter_map(|(key, value)| header(&key, value).ok())
             .collect();
+
+        // TODO: Log or notify somehow if resp_headers and header size is not the same.
+        // If that is the case, it means that some of the headers could not be parsed.
 
         HttpResponse {
             version,
@@ -243,9 +202,8 @@ pub enum TransportError {
 mod tests {
     use std::str::FromStr;
 
+    use http::Method;
     use url::Url;
-
-    use crate::Verb;
 
     use super::HttpRequest;
 
@@ -269,7 +227,7 @@ mod tests {
         let mut request = HttpRequest::from_str(input).unwrap();
         request.set_default_headers().unwrap();
 
-        assert_eq!(Verb::Post, request.verb());
+        assert_eq!(Method::POST, request.method());
 
         let expected_url = Url::parse("https://api.github.com/markdown").unwrap();
         let actual_url = request.url().unwrap();
