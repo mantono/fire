@@ -162,8 +162,7 @@ impl Args {
     fn find_env_files(request_file: &Path, environments: Vec<String>) -> Vec<PathBuf> {
         let mut files: Vec<String> = environments
             .into_iter()
-            .map(|env| vec![env.clone() + ".env", env + ".sec"])
-            .flatten()
+            .flat_map(|env| vec![env.clone() + ".env", env + ".sec"])
             .collect();
 
         files.push(String::from(".env"));
