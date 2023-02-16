@@ -122,12 +122,17 @@ impl FromStr for HttpRequest {
 impl From<HttpRequest> for (ureq::Request, Option<String>) {
     fn from(req: HttpRequest) -> Self {
         let url = req.url().unwrap();
-        let request: ureq::Request = req
-            .headers
-            .iter()
-            .fold(ureq::request(req.method.as_ref(), url.as_str()), |r, (key, value)| {
-                r.set(key.as_str(), value.to_str().unwrap())
-            });
+        let request: ureq::Request = req.headers.iter().fold(
+            ureq::request(req.method.as_ref(), url.as_str()),
+            |r, (key, value)| {
+                let key: &str = key.as_str();
+                let value: &str = match value.to_str() {
+                    Ok(v) => v,
+                    Err(_) => panic!("Unable to parse header value for key '{}': {:?}", key, value),
+                };
+                r.set(key, value)
+            },
+        );
 
         (request, req.body().clone())
     }
