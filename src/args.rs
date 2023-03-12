@@ -170,7 +170,7 @@ impl Args {
 
         let end: PathBuf = request_file.canonicalize().unwrap().parent().unwrap().to_path_buf();
 
-        let start: PathBuf = match git_root(&end).expect("Resolve git root") {
+        let start: PathBuf = match giro::git_root(&end).expect("Resolve git root") {
             Some(root) => root.parent().unwrap().to_path_buf(),
             None => end.clone(),
         };
@@ -195,35 +195,5 @@ impl Args {
             .inspect(|e| log::debug!("Found environments file {:?}", e))
             .map(|e| e.into_path())
             .collect()
-    }
-}
-
-fn git_root(path: &Path) -> Result<Option<PathBuf>, std::io::Error> {
-    let dir: Option<DirEntry> = path
-        .read_dir()?
-        .into_iter()
-        .filter_map(|entry| entry.ok())
-        .find(|entry| is_git_dir(entry).unwrap_or(false));
-
-    match dir {
-        Some(dir) => Ok(Some(dir.path())),
-        None => match path.parent() {
-            Some(parent) => git_root(parent),
-            None => Ok(None),
-        },
-    }
-}
-
-fn is_git_dir(entry: &std::fs::DirEntry) -> Result<bool, std::io::Error> {
-    let is_dir: bool = entry.file_type()?.is_dir();
-
-    if !is_dir || entry.file_name() != ".git" {
-        Ok(false)
-    } else {
-        let found: bool = std::fs::read_dir(entry.path())?
-            .filter_map(|e| e.ok())
-            .any(|f: std::fs::DirEntry| f.file_name() == "config");
-
-        Ok(found)
     }
 }

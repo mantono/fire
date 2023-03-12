@@ -206,6 +206,7 @@ dependencies = [
  "built",
  "clap",
  "env_logger",
+ "giro",
  "handlebars",
  "http",
  "httpx",
@@ -253,6 +254,12 @@ dependencies = [
  "typenum",
  "version_check",
 ]
+
+[[package]]
+name = "giro"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0e797b191f42ab4b100e77c15bd734dc7eb4c481b43fc99fe6f07884423f0d6"
 
 [[package]]
 name = "handlebars"
