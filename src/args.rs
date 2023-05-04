@@ -47,7 +47,7 @@ pub struct Args {
     ///
     /// Print headers
     #[clap(short = 'H', long)]
-    pub headers: bool,
+    headers: bool,
 
     /// Print request
     ///
@@ -55,6 +55,25 @@ pub struct Args {
     /// headers, use the `--headers` flag (`-H`).
     #[clap(short, long)]
     request: bool,
+
+    /// Ask for confirmation
+    ///
+    /// Ask for confirmation before executing a request. This implies `--request` and `--headers`
+    /// since the request will have to be displayed before it can be confirmed.
+    #[clap(short, long)]
+    ask: bool,
+
+    /// Interactive request
+    ///
+    /// Make request in "interactive mode". When doing a request in interactive mode, an absent
+    /// value for a template variable will not cause an error, instead the user will be propmpted to
+    /// input a value. This will done in turn for each of the missing values (if several) until
+    /// there are values present for all template variables, so a proper request can be done.
+    ///
+    /// This implies `--ask` since an interactive request will always ask for confirmation before it
+    /// is executed.
+    #[clap(short, long)]
+    interactive: bool,
 
     /// Environments
     ///
@@ -114,7 +133,19 @@ impl Args {
     }
 
     pub fn print_request(&self) -> bool {
-        self.request
+        self.request || self.ask()
+    }
+
+    pub fn print_headers(&self) -> bool {
+        self.headers || self.ask()
+    }
+
+    pub fn ask(&self) -> bool {
+        self.ask || self.interactive()
+    }
+
+    pub fn interactive(&self) -> bool {
+        self.interactive
     }
 
     pub fn env(&self) -> Result<Vec<Property>, ParsePropertyError> {

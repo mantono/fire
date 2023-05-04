@@ -47,7 +47,7 @@ fn exec() -> Result<(), FireError> {
         return Ok(());
     }
 
-    // 1. Read file content
+    // Read file content
     let file = match std::fs::read_to_string(args.file()) {
         Ok(file) => file,
         Err(e) => {
@@ -63,21 +63,20 @@ fn exec() -> Result<(), FireError> {
         }
     };
 
-    // 2. Read enviroment variables from system environment and extra environments supplied via cli
+    // Read enviroment variables from system environment and extra environments supplied via cli
     let props: Vec<Property> = args.env().expect("Unable to load env vars");
     log::debug!("Received properties {:?}", props);
 
-    // 3. Apply template substitution
+    // Apply template substitution
     let content: String = substitution(file, props)?;
 
-    // 4. Parse Validate format of request
+    // Parse Validate format of request
     let mut request: HttpRequest = HttpRequest::from_str(&content).unwrap();
 
-    // 5. Add default header, if missing
+    // Add default header, if missing
     request.set_default_headers().unwrap();
 
-    // 6. Print request (optional)
-
+    // Print request (optional)
     let syntax_hilighiting: bool = args.use_colors() != termcolor::ColorChoice::Never;
     let formatters: Vec<Box<dyn ContentFormatter>> = format::formatters(syntax_hilighiting);
 
@@ -91,15 +90,12 @@ fn exec() -> Result<(), FireError> {
         let border = "━".repeat(title.len());
         writeln(&mut stdout, &border);
 
-        if args.headers {
+        if args.print_headers() {
             let mut spec = ColorSpec::new();
             spec.set_dimmed(true);
             for (k, v) in &req_headers {
-                writeln_spec(
-                    &mut stdout,
-                    &format!("{}: {}", k.as_str(), v.to_str().unwrap()),
-                    &spec,
-                );
+                let value: &str = v.to_str().unwrap_or("**Invalid header value**");
+                writeln_spec(&mut stdout, &format!("{}: {}", k.as_str(), value), &spec);
             }
             if request.body().is_some() {
                 writeln(&mut stdout, "");
@@ -117,13 +113,34 @@ fn exec() -> Result<(), FireError> {
         writeln(&mut stdout, "");
     }
 
-    // 7. Make request
+    // Ask for confirmation (optional)
+    let fire: bool = if args.ask() {
+        let theme = dialoguer::theme::ColorfulTheme::default();
+        let mut prompt = if args.use_colors() != termcolor::ColorChoice::Never {
+            dialoguer::Confirm::with_theme(&theme)
+        } else {
+            dialoguer::Confirm::new()
+        };
+        prompt
+            .with_prompt("Confirm")
+            .interact()
+            .expect("Unrecoverable terminal I/O error")
+    } else {
+        true
+    };
+
+    if !fire {
+        log::debug!("Request cancelled by user");
+        return Ok(());
+    }
+
+    // Make request
     let start: Instant = Instant::now();
     let response: httpx::HttpResponse = httpx::request::call(request, args.timeout())?;
     let end: Instant = Instant::now();
     let duration: Duration = end.duration_since(start);
 
-    // 8. Handle respone
+    // Handle respone
     let status: u16 = response.status();
 
     let status_color: Option<Color> = match status {
@@ -156,7 +173,7 @@ fn exec() -> Result<(), FireError> {
     let border = "━".repeat(border_len);
     writeln(&mut stdout, &border);
 
-    if args.headers {
+    if args.print_headers() {
         let mut spec = ColorSpec::new();
         spec.set_dimmed(true);
         for (key, value) in response.headers() {
