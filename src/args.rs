@@ -52,7 +52,7 @@ pub struct Args {
     /// Print request
     ///
     /// Print the content of the request as it is sent to the remote host. To also see request
-    /// headers, use thea `--headers` flag (`-H`).
+    /// headers, use the `--headers` flag (`-H`).
     #[clap(short, long)]
     request: bool,
 
