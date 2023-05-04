@@ -1,5 +1,4 @@
 use std::{
-    fs::DirEntry,
     path::{Path, PathBuf},
     time::Duration,
 };
