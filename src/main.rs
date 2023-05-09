@@ -5,6 +5,7 @@ mod format;
 mod io;
 mod logger;
 mod prop;
+mod templ;
 mod template;
 
 use crate::args::Args;
@@ -68,7 +69,7 @@ fn exec() -> Result<(), FireError> {
     log::debug!("Received properties {:?}", props);
 
     // Apply template substitution
-    let content: String = substitution(file, props)?;
+    let content: String = substitution(file, props, args.interactive(), args.try_colors())?;
 
     // Parse Validate format of request
     let mut request: HttpRequest = HttpRequest::from_str(&content).unwrap();
@@ -77,7 +78,7 @@ fn exec() -> Result<(), FireError> {
     request.set_default_headers().unwrap();
 
     // Print request (optional)
-    let syntax_hilighiting: bool = args.use_colors() != termcolor::ColorChoice::Never;
+    let syntax_hilighiting: bool = args.try_colors();
     let formatters: Vec<Box<dyn ContentFormatter>> = format::formatters(syntax_hilighiting);
 
     let req_headers = request.headers();

@@ -124,6 +124,13 @@ impl Args {
         }
     }
 
+    pub fn try_colors(&self) -> bool {
+        match self.use_colors() {
+            ColorChoice::Never => false,
+            _ => true,
+        }
+    }
+
     pub fn file(&self) -> &std::path::Path {
         &self.file
     }

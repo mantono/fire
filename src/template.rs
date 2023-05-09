@@ -1,18 +1,51 @@
 use handlebars::{no_escape, Handlebars};
 use std::collections::HashMap;
+use termcolor::ColorChoice;
 
 use crate::prop::Property;
 
-pub fn substitution(input: String, vars: Vec<Property>) -> Result<String, SubstitutionError> {
+pub fn substitution(
+    input: String,
+    vars: Vec<Property>,
+    interactive: bool,
+    use_colors: bool,
+) -> Result<String, SubstitutionError> {
     let vars: HashMap<String, String> = merge(vars);
     let mut reg = Handlebars::new();
     reg.register_escape_fn(no_escape);
     reg.set_strict_mode(true);
     reg.register_template_string("template", input).unwrap();
-    match reg.render("template", &vars) {
+    render(reg, vars, interactive, use_colors)
+}
+
+// TODO: Write own "handlebar" template renderer that can return missing key on failed rendering
+// instead of crate handlebar.
+
+fn render(
+    template: Handlebars,
+    mut vars: HashMap<String, String>,
+    interactive: bool,
+    use_colors: bool,
+) -> Result<String, SubstitutionError> {
+    match template.render("template", &vars) {
         Ok(output) => Ok(output),
-        Err(e) => Err(SubstitutionError::MissingValue(e.desc)),
+        Err(e) => match interactive {
+            false => Err(SubstitutionError::MissingValue(e.desc)),
+            true => {
+                let column = e.column_no.unwrap_or(0);
+                let line = e.line_no.unwrap_or(0);
+                //template.render_template(template_string, data)
+                log::info!("Missing at line {} col {}", line, column);
+                let value: String = ask("foo", use_colors);
+                vars.insert(String::from("foo"), value);
+                render(template, vars, interactive, use_colors)
+            }
+        },
     }
+}
+
+fn ask(key: &str, use_colors: bool) -> String {
+    "bar".to_string()
 }
 
 #[derive(Debug)]
