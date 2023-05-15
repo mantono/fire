@@ -1,0 +1,7 @@
+method: GET
+# If USERNAME is not set, the application should either prevent the request from being executed
+# or ask for input for USERNAME if run in interactive mode (-f)
+url: https://api.github.com/users/{{USERNAME}}/followers
+headers:
+  accept: application/vnd.github+json
+  authorization: Bearer {{TOKEN}}
