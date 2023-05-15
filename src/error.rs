@@ -15,7 +15,8 @@ pub enum FireError {
     NoReadPermission(PathBuf),
     NotAFile(PathBuf),
     GenericIO(String),
-    Template(String),
+    TemplateRendering,
+    TemplateKey(String),
     Other(String),
 }
 
@@ -34,7 +35,8 @@ impl Display for FireError {
             FireError::GenericIO(err) => format!("IO error: {err}"),
             FireError::NotAFile(path) => format!("{:?} exists but it is not a file", path.clone()),
             FireError::NoReadPermission(path) => format!("No permission to read file {:?}", path.clone()),
-            FireError::Template(msg) => format!("Unable to render request from template. {msg}"),
+            FireError::TemplateRendering => format!("Unable to render request from template"),
+            FireError::TemplateKey(key) => format!("Unable to render request due to missing value for key {key}"),
             FireError::Other(err) => format!("Error: {err}"),
         };
 
@@ -51,7 +53,8 @@ impl Termination for FireError {
             FireError::NoReadPermission(_) => ExitCode::from(6),
             FireError::NotAFile(_) => ExitCode::from(7),
             FireError::GenericIO(_) => ExitCode::from(8),
-            FireError::Template(_) => ExitCode::from(9),
+            FireError::TemplateKey(_) => ExitCode::from(9),
+            FireError::TemplateRendering => ExitCode::from(10),
             FireError::Other(_) => ExitCode::from(1),
         }
     }

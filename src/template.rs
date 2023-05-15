@@ -1,8 +1,10 @@
+use handlebars::RenderError;
 use handlebars::{no_escape, Handlebars};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use termcolor::ColorChoice;
 
-use crate::prop::Property;
+use crate::{prop::Property, templ};
 
 pub fn substitution(
     input: String,
@@ -10,47 +12,56 @@ pub fn substitution(
     interactive: bool,
     use_colors: bool,
 ) -> Result<String, SubstitutionError> {
-    let vars: HashMap<String, String> = merge(vars);
+    let keys: HashSet<String> = templ::find_keys(&input);
+    let vars: HashMap<String, String> = resolve_values(interactive, use_colors, keys, merge(vars))?;
     let mut reg = Handlebars::new();
     reg.register_escape_fn(no_escape);
     reg.set_strict_mode(true);
     reg.register_template_string("template", input).unwrap();
-    render(reg, vars, interactive, use_colors)
+    reg.render("template", &vars).map_err(|_| SubstitutionError::Rendering)
 }
 
-// TODO: Write own "handlebar" template renderer that can return missing key on failed rendering
-// instead of crate handlebar.
-
-fn render(
-    template: Handlebars,
-    mut vars: HashMap<String, String>,
+fn resolve_values(
     interactive: bool,
     use_colors: bool,
-) -> Result<String, SubstitutionError> {
-    match template.render("template", &vars) {
-        Ok(output) => Ok(output),
-        Err(e) => match interactive {
-            false => Err(SubstitutionError::MissingValue(e.desc)),
-            true => {
-                let column = e.column_no.unwrap_or(0);
-                let line = e.line_no.unwrap_or(0);
-                //template.render_template(template_string, data)
-                log::info!("Missing at line {} col {}", line, column);
-                let value: String = ask("foo", use_colors);
-                vars.insert(String::from("foo"), value);
-                render(template, vars, interactive, use_colors)
-            }
-        },
-    }
-}
+    keys: HashSet<String>,
+    vars: HashMap<String, String>,
+) -> Result<HashMap<String, String>, SubstitutionError> {
+    let diff: HashSet<String> = keys
+        .difference(&vars.clone().into_keys().collect())
+        .into_iter()
+        .map(|x| x.clone())
+        .collect();
 
-fn ask(key: &str, use_colors: bool) -> String {
-    "bar".to_string()
+    if diff.is_empty() {
+        Ok(vars)
+    } else {
+        if interactive {
+            let mut added: HashMap<String, String> = HashMap::with_capacity(diff.len());
+            let theme = dialoguer::theme::ColorfulTheme::default();
+            let mut input = if use_colors {
+                dialoguer::Input::with_theme(&theme)
+            } else {
+                dialoguer::Input::new()
+            };
+            for key in diff {
+                let value: String =
+                    input.with_prompt(key.clone()).allow_empty(false).interact_text().unwrap();
+                added.insert(key, value);
+            }
+            let all = vars.into_iter().chain(added).collect();
+            Ok(all)
+        } else {
+            let missing: String = diff.into_iter().next().unwrap();
+            Err(SubstitutionError::MissingValue(missing))
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum SubstitutionError {
     MissingValue(String),
+    Rendering,
 }
 
 fn merge(mut maps: Vec<Property>) -> HashMap<String, String> {

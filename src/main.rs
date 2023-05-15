@@ -204,7 +204,8 @@ fn exec() -> Result<(), FireError> {
 impl From<SubstitutionError> for FireError {
     fn from(e: SubstitutionError) -> Self {
         match e {
-            SubstitutionError::MissingValue(err) => FireError::Template(err),
+            SubstitutionError::MissingValue(err) => FireError::TemplateKey(err),
+            SubstitutionError::Rendering => FireError::TemplateRendering,
         }
     }
 }
