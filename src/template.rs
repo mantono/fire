@@ -35,26 +35,24 @@ fn resolve_values(
 
     if diff.is_empty() {
         Ok(vars)
-    } else {
-        if interactive {
-            let mut added: HashMap<String, String> = HashMap::with_capacity(diff.len());
-            let theme = dialoguer::theme::ColorfulTheme::default();
-            let mut input = if use_colors {
-                dialoguer::Input::with_theme(&theme)
-            } else {
-                dialoguer::Input::new()
-            };
-            for key in diff {
-                let value: String =
-                    input.with_prompt(key.clone()).allow_empty(false).interact_text().unwrap();
-                added.insert(key, value);
-            }
-            let all = vars.into_iter().chain(added).collect();
-            Ok(all)
+    } else if interactive {
+        let mut added: HashMap<String, String> = HashMap::with_capacity(diff.len());
+        let theme = dialoguer::theme::ColorfulTheme::default();
+        let mut input = if use_colors {
+            dialoguer::Input::with_theme(&theme)
         } else {
-            let missing: String = diff.into_iter().next().unwrap();
-            Err(SubstitutionError::MissingValue(missing))
+            dialoguer::Input::new()
+        };
+        for key in diff {
+            let value: String =
+                input.with_prompt(key.clone()).allow_empty(false).interact_text().unwrap();
+            added.insert(key, value);
         }
+        let all = vars.into_iter().chain(added).collect();
+        Ok(all)
+    } else {
+        let missing: String = diff.into_iter().next().unwrap();
+        Err(SubstitutionError::MissingValue(missing))
     }
 }
 
