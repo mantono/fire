@@ -35,7 +35,7 @@ impl Display for FireError {
             FireError::GenericIO(err) => format!("IO error: {err}"),
             FireError::NotAFile(path) => format!("{:?} exists but it is not a file", path.clone()),
             FireError::NoReadPermission(path) => format!("No permission to read file {:?}", path.clone()),
-            FireError::TemplateRendering => format!("Unable to render request from template"),
+            FireError::TemplateRendering => String::from("Unable to render request from template"),
             FireError::TemplateKey(key) => format!("Unable to render request due to missing value for key {key}"),
             FireError::Other(err) => format!("Error: {err}"),
         };

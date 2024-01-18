@@ -172,7 +172,6 @@ impl Args {
 
     fn read_sys_envs() -> Result<Vec<Property>, ParsePropertyError> {
         std::env::vars()
-            .into_iter()
             .map(Property::try_from)
             .map(|res| res.map(|prop| prop.with_source(prop::Source::EnvVar)))
             .collect()

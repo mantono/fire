@@ -1,8 +1,6 @@
-use handlebars::RenderError;
 use handlebars::{no_escape, Handlebars};
 use std::collections::HashMap;
 use std::collections::HashSet;
-use termcolor::ColorChoice;
 
 use crate::{prop::Property, templ};
 
@@ -27,11 +25,8 @@ fn resolve_values(
     keys: HashSet<String>,
     vars: HashMap<String, String>,
 ) -> Result<HashMap<String, String>, SubstitutionError> {
-    let diff: HashSet<String> = keys
-        .difference(&vars.clone().into_keys().collect())
-        .into_iter()
-        .map(|x| x.clone())
-        .collect();
+    let diff: HashSet<String> =
+        keys.difference(&vars.clone().into_keys().collect()).cloned().collect();
 
     if diff.is_empty() {
         Ok(vars)
