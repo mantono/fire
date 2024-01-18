@@ -71,7 +71,6 @@ pub fn from_file(path: &Path) -> Result<Vec<Property>, ParsePropertyError> {
 
     content
         .lines()
-        .into_iter()
         .map(Property::from_str)
         .map(|prop| prop.map(|p| p.with_source(source)))
         .collect()

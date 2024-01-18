@@ -57,6 +57,7 @@ if they cannot be found anywhere else
 2. Global environment files - any file named exactly `.env` or `.sec` which is present in the same directory or parent directories of the request file
 3. Environment specific files - any file matching the specific environment (like `development.env` or `development.sec` if the environment is `development`) which is present in the same directory or parent directories of the request file, when an environment is specified (using flag `-e`)
 4. Command line arguments - variables supplied to the application at the command line at execution time (using flag `-E`), these will override any of the previous sources for variables
+5. Interactive mode - when the application is run in interactive mode (using flag `-i`) the user may provide values for template keys where a value is _missing_, i.e. it could not be found from any of the four sources above
 
 The priority of resolved environment files are such as that the any environment file in the same folder as the request file has the highest priority when resolving variables (if the same variable is defined in multiple places). Found files in parent directories will be considered as well, but the futher up they are found the lower priority they will have. If the request files are stored in a Git repository, the application will never consider files outside the repository. If the request is not stored in a Git repository, only the immediate directory and no parents will be considered.
 

@@ -23,6 +23,9 @@ syntect = "5.0"
 http = "0.2.8"
 httpx = { path = "httpx" }
 giro = "0.1.1"
+dialoguer = { version = "0.10.4", default-features = false }
+regex = "1.8.1"
+lazy_static = "1.4.0"
 
 [build-dependencies]
 built = { version = "0.5" }
