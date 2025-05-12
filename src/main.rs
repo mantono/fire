@@ -69,7 +69,8 @@ fn exec() -> Result<(), FireError> {
     log::debug!("Received properties {:?}", props);
 
     // Apply template substitution
-    let content: String = substitution(file, props, args.interactive(), args.try_colors())?;
+    let content: String =
+        substitution(file, props, args.interactive(), args.try_colors(), args.trim)?;
 
     // Parse Validate format of request
     let mut request: HttpRequest = HttpRequest::from_str(&content).unwrap();

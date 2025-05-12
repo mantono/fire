@@ -75,6 +75,13 @@ pub struct Args {
     #[clap(short, long)]
     interactive: bool,
 
+    /// Trim user input
+    ///
+    /// Trim user input from leading or trailing whitespace. So the input ' foo bar  ' becomes
+    /// just 'foo bar'.
+    #[clap(short, long)]
+    pub trim: bool,
+
     /// Environments
     ///
     /// One or several environments which containins environment variables. If the environment is

@@ -9,9 +9,11 @@ pub fn substitution(
     vars: Vec<Property>,
     interactive: bool,
     use_colors: bool,
+    trim: bool,
 ) -> Result<String, SubstitutionError> {
     let keys: HashSet<String> = templ::find_keys(&input);
-    let vars: HashMap<String, String> = resolve_values(interactive, use_colors, keys, merge(vars))?;
+    let vars: HashMap<String, String> =
+        resolve_values(interactive, use_colors, trim, keys, merge(vars))?;
     let mut reg = Handlebars::new();
     reg.register_escape_fn(no_escape);
     reg.set_strict_mode(true);
@@ -22,6 +24,7 @@ pub fn substitution(
 fn resolve_values(
     interactive: bool,
     use_colors: bool,
+    trim: bool,
     keys: HashSet<String>,
     vars: HashMap<String, String>,
 ) -> Result<HashMap<String, String>, SubstitutionError> {
@@ -41,6 +44,9 @@ fn resolve_values(
         for key in diff {
             let value: String =
                 input.with_prompt(key.clone()).allow_empty(false).interact_text().unwrap();
+
+            let value: String = if trim { value.trim().into() } else { value };
+
             added.insert(key, value);
         }
         let all = vars.into_iter().chain(added).collect();
