@@ -11,24 +11,24 @@ build = "build.rs"
 [dependencies]
 clap = { version = "3.2", features = ["cargo", "color", "derive", "suggestions"] }
 log = "0.4"
-env_logger = "0.9"
+env_logger = "0.11"
 termcolor = "1.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = { version = "1.0" }
 url = "2.3"
-handlebars = "4.3"
+handlebars = "4.5"
 walkdir = "2.3"
-syntect = "5.0"
+syntect = "5.3"
 http = "0.2.8"
 httpx = { path = "httpx" }
 giro = "0.1.1"
-dialoguer = { version = "0.10.4", default-features = false }
-regex = "1.8.1"
+dialoguer = { version = "0.11", default-features = false }
+regex = "1.10"
 lazy_static = "1.4.0"
 
 [build-dependencies]
-built = { version = "0.5" }
+built = { version = "0.6" }
 
 [profile.release]
 lto = true

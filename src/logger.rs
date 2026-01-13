@@ -1,4 +1,4 @@
-use env_logger::fmt::{Color, Formatter};
+use env_logger::fmt::Formatter;
 use log::{Level, LevelFilter, Record};
 use std::io;
 use std::io::Write;
@@ -32,14 +32,10 @@ fn formatter(buf: &mut Formatter, record: &Record) -> io::Result<()> {
     match record.level() {
         Level::Info => writeln!(buf, "{}", record.args()),
         Level::Warn => {
-            let mut style = buf.style();
-            style.set_color(Color::Yellow);
-            writeln!(buf, "{}: {}", style.value(record.level()), record.args())
+            writeln!(buf, "\x1b[33m{}: {}\x1b[0m", record.level(), record.args())
         }
         Level::Error => {
-            let mut style = buf.style();
-            style.set_color(Color::Red);
-            writeln!(buf, "{}: {}", style.value(record.level()), record.args())
+            writeln!(buf, "\x1b[31m{}: {}\x1b[0m", record.level(), record.args())
         }
         _ => writeln!(buf, "{}: {}", record.level(), record.args()),
     }

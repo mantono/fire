@@ -36,14 +36,20 @@ fn resolve_values(
     } else if interactive {
         let mut added: HashMap<String, String> = HashMap::with_capacity(diff.len());
         let theme = dialoguer::theme::ColorfulTheme::default();
-        let mut input = if use_colors {
-            dialoguer::Input::with_theme(&theme)
-        } else {
-            dialoguer::Input::new()
-        };
         for key in diff {
-            let value: String =
-                input.with_prompt(key.clone()).allow_empty(false).interact_text().unwrap();
+            let value: String = if use_colors {
+                dialoguer::Input::with_theme(&theme)
+                    .with_prompt(key.clone())
+                    .allow_empty(false)
+                    .interact_text()
+                    .unwrap()
+            } else {
+                dialoguer::Input::new()
+                    .with_prompt(key.clone())
+                    .allow_empty(false)
+                    .interact_text()
+                    .unwrap()
+            };
 
             let value: String = if trim { value.trim().into() } else { value };
 
