@@ -118,7 +118,7 @@ fn exec() -> Result<(), FireError> {
     // Ask for confirmation (optional)
     let fire: bool = if args.ask() {
         let theme = dialoguer::theme::ColorfulTheme::default();
-        let mut prompt = if args.use_colors() != termcolor::ColorChoice::Never {
+        let prompt = if args.use_colors() != termcolor::ColorChoice::Never {
             dialoguer::Confirm::with_theme(&theme)
         } else {
             dialoguer::Confirm::new()
