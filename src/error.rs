@@ -6,6 +6,9 @@ use std::process::{self, ExitCode, Termination};
 
 use url::Url;
 
+use crate::prop;
+use crate::prop::ParsePropertyError;
+
 pub trait Error: StdError + Termination {}
 
 pub enum FireError {
@@ -17,6 +20,7 @@ pub enum FireError {
     GenericIO(String),
     TemplateRendering,
     TemplateKey(String),
+    Environment(ParsePropertyError),
     Other(String),
 }
 
@@ -37,6 +41,12 @@ impl Display for FireError {
             FireError::NoReadPermission(path) => format!("No permission to read file {:?}", path.clone()),
             FireError::TemplateRendering => String::from("Unable to render request from template"),
             FireError::TemplateKey(key) => format!("Unable to render request due to missing value for key {key}"),
+            FireError::Environment(err) => match err {
+                prop::ParsePropertyError::Entry(entry) => format!("Invalid entry in environments file: {entry}"),
+                prop::ParsePropertyError::Key(key) => format!("Invalid key in environments file: {key}"),
+                prop::ParsePropertyError::Value(value) => format!("Invalid value in environments file: {value}"),
+                prop::ParsePropertyError::File(file) => format!("Invalid environments file: {file}"),
+            },
             FireError::Other(err) => format!("Error: {err}"),
         };
 
@@ -55,6 +65,7 @@ impl Termination for FireError {
             FireError::GenericIO(_) => ExitCode::from(8),
             FireError::TemplateKey(_) => ExitCode::from(9),
             FireError::TemplateRendering => ExitCode::from(10),
+            FireError::Environment(_) => ExitCode::from(11),
             FireError::Other(_) => ExitCode::from(1),
         }
     }

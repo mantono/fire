@@ -65,7 +65,10 @@ fn exec() -> Result<(), FireError> {
     };
 
     // Read enviroment variables from system environment and extra environments supplied via cli
-    let props: Vec<Property> = args.env().expect("Unable to load env vars");
+    let props: Vec<Property> = match args.env() {
+        Ok(env) => env,
+        Err(err) => return Err(FireError::Environment(err)),
+    };
     log::debug!("Received properties {:?}", props);
 
     // Apply template substitution
