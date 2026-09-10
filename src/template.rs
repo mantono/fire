@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::prop::Property;
+use crate::runner::{self, RunnerError};
 use crate::templ::{self, Fallback, Reference};
 
 pub fn substitution(
@@ -11,6 +12,7 @@ pub fn substitution(
     interactive: bool,
     use_colors: bool,
     trim: bool,
+    allow_command_fallbacks: bool,
 ) -> Result<String, SubstitutionError> {
     let refs: Vec<Reference> = templ::scan(&input);
     let props: HashMap<String, String> = merge(vars);
@@ -21,12 +23,16 @@ pub fn substitution(
     let mut missing: Option<String> = None;
 
     for (index, reference) in refs.iter().enumerate() {
-        let resolved: Option<String> =
-            props.get(&reference.name).cloned().or_else(|| match &reference.fallback {
+        let resolved: Option<String> = match props.get(&reference.name).cloned() {
+            Some(value) => Some(value),
+            None => match &reference.fallback {
                 Fallback::None => None,
                 Fallback::Static(value) => Some(value.clone()),
-                Fallback::Command(command) => resolve_dynamic(command),
-            });
+                Fallback::Command(command) => {
+                    Some(resolve_command_fallback(command, allow_command_fallbacks)?)
+                }
+            },
+        };
 
         match (&reference.fallback, resolved) {
             (Fallback::None, Some(value)) => {
@@ -72,12 +78,17 @@ pub fn substitution(
     reg.render("template", &render_vars).map_err(|_| SubstitutionError::Rendering)
 }
 
-/// Dynamic (command) fallback resolution. Authorization and the actual
-/// command runner are implemented as a later, separate task; until then,
-/// every command fallback occurrence is treated as unresolved so it falls
-/// through to `SubstitutionError::MissingValue` rather than prompting.
-fn resolve_dynamic(_command: &str) -> Option<String> {
-    None
+/// Resolve a dynamic (command) fallback, gated by `allow`.
+///
+/// The command is never invoked unless `allow` is `true`; reaching this
+/// point without permission yields a distinct, deterministic error instead
+/// of attempting execution.
+fn resolve_command_fallback(command: &str, allow: bool) -> Result<String, SubstitutionError> {
+    if !allow {
+        return Err(SubstitutionError::CommandFallbackNotAllowed);
+    }
+
+    runner::run_command(command).map_err(SubstitutionError::CommandFallbackFailed)
 }
 
 fn internal_key(index: usize) -> String {
@@ -139,6 +150,8 @@ fn prompt_for(names: HashSet<String>, use_colors: bool, trim: bool) -> HashMap<S
 pub enum SubstitutionError {
     MissingValue(String),
     Rendering,
+    CommandFallbackNotAllowed,
+    CommandFallbackFailed(RunnerError),
 }
 
 fn merge(mut maps: Vec<Property>) -> HashMap<String, String> {
@@ -181,7 +194,7 @@ mod tests {
     #[test]
     fn static_fallback_used_when_property_absent() {
         let input = String::from("{{FOO:bar}}");
-        let result = substitution(input, vec![], false, false, false).unwrap();
+        let result = substitution(input, vec![], false, false, false, false).unwrap();
         assert_eq!("bar", result);
     }
 
@@ -198,7 +211,7 @@ mod tests {
         for source in sources {
             let prop = Property::new(String::from("FOO"), String::from("value"), source)?;
             let input = String::from("{{FOO:bar}}");
-            let result = substitution(input, vec![prop], false, false, false).unwrap();
+            let result = substitution(input, vec![prop], false, false, false, false).unwrap();
             assert_eq!("value", result, "source {:?} did not override fallback", source);
         }
 
@@ -218,7 +231,7 @@ mod tests {
         for source in sources {
             let prop = Property::new(String::from("FOO"), String::from("value"), source)?;
             let input = String::from("{{FOO|echo bar}}");
-            let result = substitution(input, vec![prop], false, false, false).unwrap();
+            let result = substitution(input, vec![prop], false, false, false, false).unwrap();
             assert_eq!("value", result, "source {:?} did not override fallback", source);
         }
 
@@ -229,7 +242,7 @@ mod tests {
     fn empty_sourced_value_overrides_fallback() -> Result<(), ParsePropertyError> {
         let prop = Property::new(String::from("FOO"), String::new(), Source::Arg)?;
         let input = String::from("{{FOO:bar}}");
-        let result = substitution(input, vec![prop], false, false, false).unwrap();
+        let result = substitution(input, vec![prop], false, false, false, false).unwrap();
         assert_eq!("", result);
 
         Ok(())
@@ -238,7 +251,7 @@ mod tests {
     #[test]
     fn per_occurrence_fallbacks_resolve_independently_when_missing() {
         let input = String::from("{{FOO:a}} {{FOO:b}}");
-        let result = substitution(input, vec![], false, false, false).unwrap();
+        let result = substitution(input, vec![], false, false, false, false).unwrap();
         assert_eq!("a b", result);
     }
 
@@ -246,7 +259,7 @@ mod tests {
     fn per_occurrence_supplied_value_replaces_every_occurrence() -> Result<(), ParsePropertyError> {
         let prop = Property::new(String::from("FOO"), String::from("value"), Source::Arg)?;
         let input = String::from("{{FOO}} {{FOO:a}} {{FOO:b}}");
-        let result = substitution(input, vec![prop], false, false, false).unwrap();
+        let result = substitution(input, vec![prop], false, false, false, false).unwrap();
         assert_eq!("value value value", result);
 
         Ok(())
@@ -258,17 +271,53 @@ mod tests {
         // prompt must be attempted (which would otherwise hang/panic in a test
         // without an interactive terminal attached).
         let input = String::from("{{FOO:bar}}");
-        let result = substitution(input, vec![], true, false, false).unwrap();
+        let result = substitution(input, vec![], true, false, false, false).unwrap();
         assert_eq!("bar", result);
     }
 
     #[test]
     fn legacy_missing_value_behavior_is_preserved() {
         let input = String::from("{{FOO}}");
-        let err = substitution(input, vec![], false, false, false).unwrap_err();
+        let err = substitution(input, vec![], false, false, false, false).unwrap_err();
         match err {
             SubstitutionError::MissingValue(name) => assert_eq!("FOO", name),
             other => panic!("expected MissingValue, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn sourced_value_bypasses_authorization_and_runner_for_command_fallback(
+    ) -> Result<(), ParsePropertyError> {
+        // If this fallback command were actually invoked, it would fail (the binary does not
+        // exist), regardless of the `--allow-command-fallbacks` permission. A sourced value must
+        // short-circuit both the authorization check and the runner entirely.
+        let prop = Property::new(String::from("FOO"), String::from("value"), Source::Arg)?;
+        let input = String::from("{{FOO|definitely-not-a-real-command-xyz}}");
+
+        let result =
+            substitution(input.clone(), vec![prop.clone()], false, false, false, false).unwrap();
+        assert_eq!("value", result);
+
+        let result = substitution(input, vec![prop], false, false, false, true).unwrap();
+        assert_eq!("value", result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn command_fallback_denied_without_permission_yields_distinct_error() {
+        let input = String::from("{{FOO|echo bar}}");
+        let err = substitution(input, vec![], false, false, false, false).unwrap_err();
+        match err {
+            SubstitutionError::CommandFallbackNotAllowed => {}
+            other => panic!("expected CommandFallbackNotAllowed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn command_fallback_executes_when_allowed() {
+        let input = String::from("{{FOO|echo bar}}");
+        let result = substitution(input, vec![], false, false, false, true).unwrap();
+        assert_eq!("bar", result);
     }
 }

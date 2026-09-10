@@ -5,6 +5,7 @@ mod format;
 mod io;
 mod logger;
 mod prop;
+mod runner;
 mod templ;
 mod template;
 
@@ -72,8 +73,14 @@ fn exec() -> Result<(), FireError> {
     log::debug!("Received properties {:?}", props);
 
     // Apply template substitution
-    let content: String =
-        substitution(file, props, args.interactive(), args.try_colors(), args.trim)?;
+    let content: String = substitution(
+        file,
+        props,
+        args.interactive(),
+        args.try_colors(),
+        args.trim,
+        args.allow_command_fallbacks(),
+    )?;
 
     // Parse Validate format of request
     let mut request: HttpRequest = HttpRequest::from_str(&content).unwrap();
@@ -210,6 +217,14 @@ impl From<SubstitutionError> for FireError {
         match e {
             SubstitutionError::MissingValue(err) => FireError::TemplateKey(err),
             SubstitutionError::Rendering => FireError::TemplateRendering,
+            // Minimal plumbing only: a dedicated `FireError` variant and exit code for
+            // denied/failed dynamic fallback execution is added by a later task.
+            SubstitutionError::CommandFallbackNotAllowed => FireError::Other(String::from(
+                "Dynamic command fallback requires --allow-command-fallbacks",
+            )),
+            SubstitutionError::CommandFallbackFailed(err) => {
+                FireError::Other(format!("Dynamic command fallback command failed: {err:?}"))
+            }
         }
     }
 }
