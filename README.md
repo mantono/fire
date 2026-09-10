@@ -46,7 +46,7 @@ headers:
   authorization: Bearer {{TOKEN}}
 ```
 
-See [examples](examples/) directory for more examples of how to structure request files.
+See [examples](examples/) directory for more examples of how to structure request files, including static and command default values (see [Default Values](#default-values) below).
 
 ## Templating and Variable Substitution
 Request files supports templating where variables can be substituted at execution time. This makes it very easy to have request
@@ -72,6 +72,43 @@ API_URL=https://url-to-some.api.com/api
 REGION=europe
 USERNAME="quoted-username"
 ```
+
+### Default Values
+A template key may declare a default value that is used only when no value can be resolved for it from any of the sources above. Two syntaxes are supported:
+
+- Static default: `{{NAME:value}}` - if `NAME` is not supplied, the literal `value` is used.
+- Command (dynamic) default: `{{NAME|command}}` - if `NAME` is not supplied, `command` is executed through the system shell and its normalized output is used.
+
+```yaml
+method: POST
+url: https://example.com
+headers:
+  content-type: {{CONTENT_TYPE:application/json}}
+  x-correlation-id: {{CORRELATION_ID|uuidgen}}
+```
+
+**Source precedence is unchanged by defaults.** A default is only a fallback of last resort before interactive prompting: any value found via a CLI `-E` argument, an environment/secret file, or an inherited system environment variable is always used instead of a default, regardless of which of those sources it came from. A sourced value that is explicitly empty (`""`) still counts as resolved and suppresses the default entirely, including a command default, so the command is never invoked in that case.
+
+**Defaults are resolved per occurrence, not per name.** Each `{{NAME...}}` occurrence in a request file is resolved independently, so the same `NAME` may appear multiple times with different (or no) fallback in each place:
+
+```yaml
+# All three occurrences of ID render as "value" if ID is supplied.
+# Otherwise the first has no default, so it raises the legacy missing-value
+# error (or prompts, in interactive mode), the second renders "a", and the
+# third renders "b".
+headers:
+  x-a: {{ID}}
+  x-b: {{ID:a}}
+  x-c: {{ID:b}}
+```
+
+**Ordering with interactive mode.** Defaults are always resolved before interactive prompting (`-i`/`--interactive`). Any occurrence with a static or command default is therefore never prompted for, even in interactive mode; only a plain `{{NAME}}` occurrence with no default and no resolved value can trigger a prompt, and only as the last resort.
+
+**Command execution details.** A command default requires the explicit opt-in flag `--allow-command-fallbacks`; without it, reaching a command default is a hard error and the command is never invoked. The command itself is run as a single argument to the platform shell: `sh -c "command"` on Unix and `cmd /C "command"` on Windows. Its standard output is captured as UTF-8; only a trailing `\r` and/or `\n` sequence is stripped, all other whitespace in the output is preserved as-is. A shell that cannot be launched, exits with a non-zero status, or produces output that is not valid UTF-8 each produce a distinct, non-secret error instead of silently falling back to any other value.
+
+> **Security warning:** `--allow-command-fallbacks` causes `fire` to execute arbitrary shell commands found in the request file you are running, without confirmation. Only enable this flag for request files you trust, since a command default behaves the same as running that command yourself in a shell.
+
+See [`examples/request_with_static_default.yml`](examples/request_with_static_default.yml) and [`examples/request_with_command_default.yml`](examples/request_with_command_default.yml) for minimal, non-executing examples of each syntax.
 
 ## Additional Documentation
 See `fire --help` for more documentation on how to use the application.
