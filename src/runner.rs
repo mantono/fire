@@ -82,7 +82,12 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn non_utf8_stdout_is_surfaced() {
-        let err = run_command("printf '\\xff'").unwrap_err();
+        // `\377` is a POSIX octal escape (0xFF) supported by both dash and
+        // bash. The non-portable `\xff` hex escape is silently ignored by
+        // dash (Ubuntu's default `/bin/sh`), which prints the literal bytes
+        // `\xff` instead of a single invalid byte, so it must not be used
+        // here.
+        let err = run_command("printf '\\377'").unwrap_err();
         assert_eq!(RunnerError::NonUtf8, err);
     }
 
