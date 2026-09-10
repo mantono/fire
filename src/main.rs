@@ -217,14 +217,8 @@ impl From<SubstitutionError> for FireError {
         match e {
             SubstitutionError::MissingValue(err) => FireError::TemplateKey(err),
             SubstitutionError::Rendering => FireError::TemplateRendering,
-            // Minimal plumbing only: a dedicated `FireError` variant and exit code for
-            // denied/failed dynamic fallback execution is added by a later task.
-            SubstitutionError::CommandFallbackNotAllowed => FireError::Other(String::from(
-                "Dynamic command fallback requires --allow-command-fallbacks",
-            )),
-            SubstitutionError::CommandFallbackFailed(err) => {
-                FireError::Other(format!("Dynamic command fallback command failed: {err:?}"))
-            }
+            SubstitutionError::CommandFallbackNotAllowed => FireError::CommandFallbackNotAllowed,
+            SubstitutionError::CommandFallbackFailed(err) => FireError::CommandFallbackFailed(err),
         }
     }
 }
