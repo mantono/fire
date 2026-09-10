@@ -48,7 +48,10 @@ pub fn scan(template: &str) -> Vec<Reference> {
 
 /// Discover the distinct reference names present in `template`, regardless
 /// of fallback form. This is the legacy key-discovery behavior, now backed
-/// by [`scan`].
+/// by [`scan`]. `src/template.rs` resolves references directly via [`scan`]
+/// for occurrence-level fallback handling, so this entry point is kept for
+/// its own test coverage and as a stable legacy-discovery API.
+#[allow(dead_code)]
 pub fn find_keys(template: &str) -> HashSet<String> {
     scan(template).into_iter().map(|reference: Reference| reference.name).collect()
 }
