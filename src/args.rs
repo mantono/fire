@@ -87,7 +87,7 @@ pub struct Args {
     /// Allow a `{{NAME|command}}` template reference to execute `command` via the system shell
     /// when no value for `NAME` is otherwise supplied. This runs arbitrary shell commands found
     /// in the request file, so only enable it for request files you trust.
-    #[clap(long = "allow-command-fallbacks")]
+    #[clap(short = 'F', long = "allow-command-fallbacks")]
     allow_command_fallbacks: bool,
 
     /// Environments
