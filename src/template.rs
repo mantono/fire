@@ -17,7 +17,7 @@ pub fn substitution(
     let refs: Vec<Reference> = templ::scan(&input);
     let props: HashMap<String, String> = merge(vars);
 
-    let mut render_vars: HashMap<String, String> = HashMap::new();
+    let mut render_vars: HashMap<String, String> = props.clone();
     let mut rewrites: Vec<Option<String>> = Vec::with_capacity(refs.len());
     let mut prompt_names: HashSet<String> = HashSet::new();
     let mut missing: Option<String> = None;
@@ -283,6 +283,18 @@ mod tests {
             SubstitutionError::MissingValue(name) => assert_eq!("FOO", name),
             other => panic!("expected MissingValue, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn handlebars_blocks_receive_supplied_properties() -> Result<(), ParsePropertyError> {
+        let enabled: Property =
+            Property::new(String::from("ENABLED"), String::from("true"), Source::Arg)?;
+        let input: String = String::from("{{#if ENABLED}}enabled{{/if}}");
+
+        let result: String = substitution(input, vec![enabled], false, false, false, false).unwrap();
+
+        assert_eq!("enabled", result);
+        Ok(())
     }
 
     #[test]
