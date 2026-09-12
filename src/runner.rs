@@ -82,9 +82,10 @@ fn run_with_limits(
             }
             Ok(Ok(bytes)) => stdout = Some(bytes),
             Ok(Err(error)) => return Err(RunnerError::Launch(error.to_string())),
-            Err(TryRecvError::Disconnected) => {
+            Err(TryRecvError::Disconnected) if stdout.is_none() => {
                 return Err(RunnerError::Launch(String::from("stdout reader disconnected")))
             }
+            Err(TryRecvError::Disconnected) => {}
             Err(TryRecvError::Empty) => {}
         }
 
