@@ -1,0 +1,8 @@
+method: POST
+url: https://example.com
+headers:
+  # Static default: used only when CONTENT_TYPE is not supplied via -E, an
+  # environment/secret file, or an inherited system environment variable.
+  # No command is ever invoked for this syntax, so it runs safely without
+  # --allow-command-fallbacks and never prompts in interactive mode.
+  content-type: {{CONTENT_TYPE:application/json}}

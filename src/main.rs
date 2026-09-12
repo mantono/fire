@@ -5,6 +5,7 @@ mod format;
 mod io;
 mod logger;
 mod prop;
+mod runner;
 mod templ;
 mod template;
 
@@ -72,8 +73,14 @@ fn exec() -> Result<(), FireError> {
     log::debug!("Received properties {:?}", props);
 
     // Apply template substitution
-    let content: String =
-        substitution(file, props, args.interactive(), args.try_colors(), args.trim)?;
+    let content: String = substitution(
+        file,
+        props,
+        args.interactive(),
+        args.try_colors(),
+        args.trim,
+        args.allow_command_fallbacks(),
+    )?;
 
     // Parse Validate format of request
     let mut request: HttpRequest = HttpRequest::from_str(&content).unwrap();
@@ -210,6 +217,8 @@ impl From<SubstitutionError> for FireError {
         match e {
             SubstitutionError::MissingValue(err) => FireError::TemplateKey(err),
             SubstitutionError::Rendering => FireError::TemplateRendering,
+            SubstitutionError::CommandFallbackNotAllowed => FireError::CommandFallbackNotAllowed,
+            SubstitutionError::CommandFallbackFailed(err) => FireError::CommandFallbackFailed(err),
         }
     }
 }

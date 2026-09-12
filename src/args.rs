@@ -82,6 +82,14 @@ pub struct Args {
     #[clap(short, long)]
     pub trim: bool,
 
+    /// Allow dynamic command fallbacks
+    ///
+    /// Allow a `{{NAME|command}}` template reference to execute `command` via the system shell
+    /// when no value for `NAME` is otherwise supplied. This runs arbitrary shell commands found
+    /// in the request file, so only enable it for request files you trust.
+    #[clap(short = 'F', long = "allow-command-fallbacks")]
+    allow_command_fallbacks: bool,
+
     /// Environments
     ///
     /// One or several environments which containins environment variables. If the environment is
@@ -162,6 +170,10 @@ impl Args {
         self.interactive
     }
 
+    pub fn allow_command_fallbacks(&self) -> bool {
+        self.allow_command_fallbacks
+    }
+
     pub fn env(&self) -> Result<Vec<Property>, ParsePropertyError> {
         let sys_envs: Vec<Property> = Self::read_sys_envs()?;
         let file_envs: Vec<Property> = self.read_file_envs()?;
@@ -238,5 +250,24 @@ impl Args {
             .inspect(|e| log::debug!("Found environments file {:?}", e))
             .map(|e| e.into_path())
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::Args;
+
+    #[test]
+    fn allow_command_fallbacks_defaults_to_false() {
+        let args: Args = Args::parse_from(["fire", "request.yaml"]);
+        assert!(!args.allow_command_fallbacks());
+    }
+
+    #[test]
+    fn allow_command_fallbacks_flag_enables_it() {
+        let args: Args = Args::parse_from(["fire", "--allow-command-fallbacks", "request.yaml"]);
+        assert!(args.allow_command_fallbacks());
     }
 }
