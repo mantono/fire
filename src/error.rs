@@ -71,6 +71,10 @@ impl Display for FireError {
                 RunnerError::NonUtf8 => {
                     String::from("Dynamic command fallback produced non-UTF-8 output")
                 }
+                RunnerError::Timeout => String::from("Dynamic command fallback timed out"),
+                RunnerError::OutputTooLarge => {
+                    String::from("Dynamic command fallback produced too much output")
+                }
             },
             FireError::Other(err) => format!("Error: {err}"),
         };
@@ -150,6 +154,18 @@ mod tests {
     fn command_fallback_non_utf8_failure_message() {
         let err = FireError::CommandFallbackFailed(RunnerError::NonUtf8);
         assert_eq!("Dynamic command fallback produced non-UTF-8 output", err.to_string());
+    }
+
+    #[test]
+    fn command_fallback_timeout_failure_message() {
+        let err = FireError::CommandFallbackFailed(RunnerError::Timeout);
+        assert_eq!("Dynamic command fallback timed out", err.to_string());
+    }
+
+    #[test]
+    fn command_fallback_excessive_output_failure_message() {
+        let err = FireError::CommandFallbackFailed(RunnerError::OutputTooLarge);
+        assert_eq!("Dynamic command fallback produced too much output", err.to_string());
     }
 
     /// Documents the stable exit codes chosen for the two new variants: 1
