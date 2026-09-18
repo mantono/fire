@@ -18,11 +18,13 @@ pub fn substitution(
     let props: HashMap<String, String> = merge(vars);
 
     let mut render_vars: HashMap<String, String> = props.clone();
+    let mut occupied_keys: HashSet<String> = props.keys().cloned().collect();
+    occupied_keys.extend(refs.iter().map(|reference: &Reference| reference.name.clone()));
     let mut rewrites: Vec<Option<String>> = Vec::with_capacity(refs.len());
     let mut prompt_names: HashSet<String> = HashSet::new();
     let mut missing: Option<String> = None;
 
-    for (index, reference) in refs.iter().enumerate() {
+    for reference in &refs {
         let resolved: Option<String> = match props.get(&reference.name).cloned() {
             Some(value) => Some(value),
             None => match &reference.fallback {
@@ -44,7 +46,7 @@ pub fn substitution(
                 rewrites.push(None);
             }
             (_, Some(value)) => {
-                let key: String = internal_key(index);
+                let key: String = internal_key(&mut occupied_keys);
                 render_vars.insert(key.clone(), value);
                 rewrites.push(Some(key));
             }
@@ -91,8 +93,11 @@ fn resolve_command_fallback(command: &str, allow: bool) -> Result<String, Substi
     runner::run_command(command).map_err(SubstitutionError::CommandFallbackFailed)
 }
 
-fn internal_key(index: usize) -> String {
-    format!("__fire_ref_{index}")
+fn internal_key(occupied: &mut HashSet<String>) -> String {
+    (0_usize..)
+        .map(|index: usize| format!("__fire_ref_{index}"))
+        .find(|candidate: &String| occupied.insert(candidate.clone()))
+        .unwrap()
 }
 
 /// Rebuild `input` with every extended-fallback occurrence's span replaced by
@@ -294,6 +299,33 @@ mod tests {
         let result: String = substitution(input, vec![enabled], false, false, false, false).unwrap();
 
         assert_eq!("enabled", result);
+        Ok(())
+    }
+
+    #[test]
+    fn fallback_rewrite_does_not_overwrite_a_supplied_internal_name(
+    ) -> Result<(), ParsePropertyError> {
+        let supplied: Property =
+            Property::new(String::from("__fire_ref_1"), String::from("provided"), Source::Arg)?;
+        let input: String = String::from("{{__fire_ref_1}} {{FOO:bar}}");
+
+        let result: String =
+            substitution(input, vec![supplied], false, false, false, false).unwrap();
+
+        assert_eq!("provided bar", result);
+        Ok(())
+    }
+
+    #[test]
+    fn supplied_internal_name_does_not_overwrite_a_fallback() -> Result<(), ParsePropertyError> {
+        let supplied: Property =
+            Property::new(String::from("__fire_ref_0"), String::from("provided"), Source::Arg)?;
+        let input: String = String::from("{{FOO:bar}} {{__fire_ref_0}}");
+
+        let result: String =
+            substitution(input, vec![supplied], false, false, false, false).unwrap();
+
+        assert_eq!("bar provided", result);
         Ok(())
     }
 
