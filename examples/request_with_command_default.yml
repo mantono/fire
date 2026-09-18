@@ -1,0 +1,10 @@
+method: POST
+url: https://example.com
+headers:
+  # Command (dynamic) default: only invoked if CORRELATION_ID is not
+  # supplied via -E, an environment/secret file, or an inherited system
+  # environment variable. Requires the --allow-command-fallbacks flag;
+  # without it, running this request fails with a dedicated error instead
+  # of executing `uuidgen`. This file is documentation only and is never
+  # executed by the test suite.
+  x-correlation-id: {{CORRELATION_ID|uuidgen}}

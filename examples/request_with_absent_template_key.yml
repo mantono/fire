@@ -4,4 +4,4 @@ method: GET
 url: https://api.github.com/users/{{USERNAME}}/followers
 headers:
   accept: application/vnd.github+json
-  authorization: Bearer {{TOKEN}}
+  authorization: Bearer {{TOKEN|fooooo}}
