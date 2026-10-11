@@ -200,6 +200,89 @@ mod tests {
     }
 
     #[test]
+    fn command_failures_stop_loading_without_exposing_secrets() -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let path: std::path::PathBuf = directory.path().join(".sec");
+        let marker: std::path::PathBuf = directory.path().join("later");
+        ["printf secret; printf secret >&2; exit 7", "fire_nonexistent_command_32", "printf '\\377'", "("]
+            .into_iter()
+            .try_for_each(|command: &str| -> Result<(), Box<dyn std::error::Error>> {
+                std::fs::write(&path, format!(
+                    "marker={}\ntoken=$({command})\nlater=$(printf x > \"$marker\")", marker.display()
+                ))?;
+                let error: ParsePropertyError = super::from_file(&path).unwrap_err();
+                assert!(matches!(&error, ParsePropertyError::Command(key) if key == "token"));
+                assert_eq!(error.to_string(), "Command assignment failed for variable: token");
+                assert!(!format!("{error:?}").contains("secret"));
+                assert!(!marker.exists());
+                Ok(())
+            })?;
+        Ok(())
+    }
+
+    #[test]
+    fn shell_supports_quotes_pipes_and_nested_substitution() -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let path: std::path::PathBuf = directory.path().join("development.env");
+        std::fs::write(&path, "value=\"$(printf '%s' \"$(printf 'hello world')\" | tr 'a-z' 'A-Z')\"\nempty=$(printf '')\npath=$(printf '%s' \"$PATH\")")?;
+        let properties: Vec<Property> = super::from_file(&path)?;
+        assert_eq!(properties[0].value(), "HELLO WORLD");
+        assert_eq!(properties[1].value(), "");
+        assert_eq!(properties[2].value(), std::env::var("PATH")?);
+        Ok(())
+    }
+
+    #[test]
+    fn only_whole_file_values_execute_commands() -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let path: std::path::PathBuf = directory.path().join(".env");
+        std::fs::write(&path, "foo=bar\nquoted='some value'\nembedded=prefix-$(printf generated)\nincomplete=$(printf generated\n")?;
+        let properties: Vec<Property> = super::from_file(&path)?;
+        assert_eq!(properties.iter().map(Property::value).collect::<Vec<&str>>(),
+            vec!["bar", "some value", "prefix-$(printf generated)", "$(printf generated"]);
+        let argument: Property = "id=$(printf generated)".parse()?;
+        let environment: Property = Property::try_from(("id".to_string(), "$(printf generated)".to_string()))?;
+        assert_eq!(argument.value(), "$(printf generated)");
+        assert_eq!(environment.value(), "$(printf generated)");
+        Ok(())
+    }
+
+    #[test]
+    fn dynamic_values_keep_existing_source_precedence() -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let path: std::path::PathBuf = directory.path().join(".env");
+        std::fs::write(&path, "id=$(printf generated)")?;
+        let mut properties: Vec<Property> = super::from_file(&path)?;
+        properties.push(Property::new("id".to_string(), "system".to_string(), Source::EnvVar)?);
+        let render = |properties: Vec<Property>| crate::template::substitution(
+            "{{id}}".to_string(), properties, false, false, false,
+        ).map_err(|error| format!("{error:?}"));
+        assert_eq!(render(properties.clone())?, "generated");
+        properties.push(Property::new("id".to_string(), "argument".to_string(), Source::Arg)?);
+        assert_eq!(render(properties)?, "argument");
+        Ok(())
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn command_output_preserves_data_and_only_strips_trailing_newlines(
+            payload in "[A-Za-z0-9 _=$(){};|&<>]{0,64}",
+            newlines in 0usize..6,
+        ) {
+            let directory: tempfile::TempDir = tempfile::tempdir().unwrap();
+            let path: std::path::PathBuf = directory.path().join(".sec");
+            let value: String = format!("  start-{payload}-end  ");
+            let suffix: String = "\\n".repeat(newlines);
+            std::fs::write(&path, format!(
+                "payload=\"{value}\"\nvalue=$(printf '%s\\n%s{suffix}' \"$payload\" \"$payload\")"
+            )).unwrap();
+            let properties: Vec<Property> = super::from_file(&path).unwrap();
+            proptest::prop_assert_eq!(properties[0].value(), value.as_str());
+            proptest::prop_assert_eq!(properties[1].value(), format!("{value}\n{value}"));
+        }
+    }
+
+    #[test]
     fn test_properties_sort_order() -> Result<(), ParsePropertyError> {
         let env_var = Property::new("key".to_string(), "env_var".to_string(), Source::EnvVar)?;
         let file_root = Property::new("key".to_string(), "file_root".to_string(), Source::File(0))?;
