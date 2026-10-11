@@ -80,8 +80,13 @@ pub fn from_file(path: &Path) -> Result<Vec<Property>, ParsePropertyError> {
         })
 }
 
-fn resolve_command(mut property: Property, previous: &[Property]) -> Result<Property, ParsePropertyError> {
-    if let Some(command) = property.value.strip_prefix("$(").and_then(|value| value.strip_suffix(')')) {
+fn resolve_command(
+    mut property: Property,
+    previous: &[Property],
+) -> Result<Property, ParsePropertyError> {
+    if let Some(command) =
+        property.value.strip_prefix("$(").and_then(|value| value.strip_suffix(')'))
+    {
         let output: std::process::Output = std::process::Command::new("sh")
             .arg("-c")
             .arg(command)
@@ -125,7 +130,9 @@ impl Display for ParsePropertyError {
             ParsePropertyError::Key(key) => write!(f, "Invalid key: {}", key),
             ParsePropertyError::Value(value) => write!(f, "Invalid value: {}", value),
             ParsePropertyError::File(file) => write!(f, "Invalid value: {}", file),
-            ParsePropertyError::Command(key) => write!(f, "Command assignment failed for variable: {key}"),
+            ParsePropertyError::Command(key) => {
+                write!(f, "Command assignment failed for variable: {key}")
+            }
         }
     }
 }
@@ -165,7 +172,8 @@ mod tests {
     use super::{ParsePropertyError, Property};
 
     #[test]
-    fn command_assignment_is_resolved_when_file_is_loaded() -> Result<(), Box<dyn std::error::Error>> {
+    fn command_assignment_is_resolved_when_file_is_loaded() -> Result<(), Box<dyn std::error::Error>>
+    {
         let directory: tempfile::TempDir = tempfile::tempdir()?;
         let path: std::path::PathBuf = directory.path().join(".env");
         std::fs::write(&path, "id=$(printf generated)")?;
@@ -178,7 +186,8 @@ mod tests {
     }
 
     #[test]
-    fn assignments_run_once_in_order_and_reuse_the_resolved_value() -> Result<(), Box<dyn std::error::Error>> {
+    fn assignments_run_once_in_order_and_reuse_the_resolved_value(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let directory: tempfile::TempDir = tempfile::tempdir()?;
         let path: std::path::PathBuf = directory.path().join(".sec");
         let marker: std::path::PathBuf = directory.path().join("calls");
@@ -192,36 +201,51 @@ mod tests {
         assert_eq!(properties[4].value(), "first-generated/second");
         let rendered: String = crate::template::substitution(
             "https://example.com/{{id}} {\"ref\":\"{{id}}\"} {{copy}}".to_string(),
-            properties, false, false, false,
-        ).map_err(|error| format!("{error:?}"))?;
+            properties,
+            false,
+            false,
+            false,
+        )
+        .map_err(|error| format!("{error:?}"))?;
         assert_eq!(rendered, "https://example.com/first-generated {\"ref\":\"first-generated\"} first-generated/second");
         assert_eq!(std::fs::read_to_string(marker)?, "x");
         Ok(())
     }
 
     #[test]
-    fn command_failures_stop_loading_without_exposing_secrets() -> Result<(), Box<dyn std::error::Error>> {
+    fn command_failures_stop_loading_without_exposing_secrets(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let directory: tempfile::TempDir = tempfile::tempdir()?;
         let path: std::path::PathBuf = directory.path().join(".sec");
         let marker: std::path::PathBuf = directory.path().join("later");
-        ["printf secret; printf secret >&2; exit 7", "fire_nonexistent_command_32", "printf '\\377'", "("]
-            .into_iter()
-            .try_for_each(|command: &str| -> Result<(), Box<dyn std::error::Error>> {
-                std::fs::write(&path, format!(
-                    "marker={}\ntoken=$({command})\nlater=$(printf x > \"$marker\")", marker.display()
-                ))?;
-                let error: ParsePropertyError = super::from_file(&path).unwrap_err();
-                assert!(matches!(&error, ParsePropertyError::Command(key) if key == "token"));
-                assert_eq!(error.to_string(), "Command assignment failed for variable: token");
-                assert!(!format!("{error:?}").contains("secret"));
-                assert!(!marker.exists());
-                Ok(())
-            })?;
+        [
+            "printf secret; printf secret >&2; exit 7",
+            "fire_nonexistent_command_32",
+            "printf '\\377'",
+            "(",
+        ]
+        .into_iter()
+        .try_for_each(|command: &str| -> Result<(), Box<dyn std::error::Error>> {
+            std::fs::write(
+                &path,
+                format!(
+                    "marker={}\ntoken=$({command})\nlater=$(printf x > \"$marker\")",
+                    marker.display()
+                ),
+            )?;
+            let error: ParsePropertyError = super::from_file(&path).unwrap_err();
+            assert!(matches!(&error, ParsePropertyError::Command(key) if key == "token"));
+            assert_eq!(error.to_string(), "Command assignment failed for variable: token");
+            assert!(!format!("{error:?}").contains("secret"));
+            assert!(!marker.exists());
+            Ok(())
+        })?;
         Ok(())
     }
 
     #[test]
-    fn shell_supports_quotes_pipes_and_nested_substitution() -> Result<(), Box<dyn std::error::Error>> {
+    fn shell_supports_quotes_pipes_and_nested_substitution(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let directory: tempfile::TempDir = tempfile::tempdir()?;
         let path: std::path::PathBuf = directory.path().join("development.env");
         std::fs::write(&path, "value=\"$(printf '%s' \"$(printf 'hello world')\" | tr 'a-z' 'A-Z')\"\nempty=$(printf '')\npath=$(printf '%s' \"$PATH\")")?;
@@ -238,10 +262,18 @@ mod tests {
         let path: std::path::PathBuf = directory.path().join(".env");
         std::fs::write(&path, "foo=bar\nquoted='some value'\nembedded=prefix-$(printf generated)\nincomplete=$(printf generated\n")?;
         let properties: Vec<Property> = super::from_file(&path)?;
-        assert_eq!(properties.iter().map(Property::value).collect::<Vec<&str>>(),
-            vec!["bar", "some value", "prefix-$(printf generated)", "$(printf generated"]);
+        assert_eq!(
+            properties.iter().map(Property::value).collect::<Vec<&str>>(),
+            vec![
+                "bar",
+                "some value",
+                "prefix-$(printf generated)",
+                "$(printf generated"
+            ]
+        );
         let argument: Property = "id=$(printf generated)".parse()?;
-        let environment: Property = Property::try_from(("id".to_string(), "$(printf generated)".to_string()))?;
+        let environment: Property =
+            Property::try_from(("id".to_string(), "$(printf generated)".to_string()))?;
         assert_eq!(argument.value(), "$(printf generated)");
         assert_eq!(environment.value(), "$(printf generated)");
         Ok(())
@@ -254,9 +286,10 @@ mod tests {
         std::fs::write(&path, "id=$(printf generated)")?;
         let mut properties: Vec<Property> = super::from_file(&path)?;
         properties.push(Property::new("id".to_string(), "system".to_string(), Source::EnvVar)?);
-        let render = |properties: Vec<Property>| crate::template::substitution(
-            "{{id}}".to_string(), properties, false, false, false,
-        ).map_err(|error| format!("{error:?}"));
+        let render = |properties: Vec<Property>| {
+            crate::template::substitution("{{id}}".to_string(), properties, false, false, false)
+                .map_err(|error| format!("{error:?}"))
+        };
         assert_eq!(render(properties.clone())?, "generated");
         properties.push(Property::new("id".to_string(), "argument".to_string(), Source::Arg)?);
         assert_eq!(render(properties)?, "argument");
