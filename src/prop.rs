@@ -73,8 +73,25 @@ pub fn from_file(path: &Path) -> Result<Vec<Property>, ParsePropertyError> {
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(Property::from_str)
-        .map(|prop| prop.map(|p| p.with_source(source)))
+        .map(|prop| prop.and_then(|p| resolve_command(p.with_source(source))))
         .collect()
+}
+
+fn resolve_command(mut property: Property) -> Result<Property, ParsePropertyError> {
+    if let Some(command) = property.value.strip_prefix("$(").and_then(|value| value.strip_suffix(')')) {
+        let output: std::process::Output = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .output()
+            .map_err(|_| ParsePropertyError::Command(property.key.clone()))?;
+        if !output.status.success() {
+            return Err(ParsePropertyError::Command(property.key));
+        }
+        let value: String = String::from_utf8(output.stdout)
+            .map_err(|_| ParsePropertyError::Command(property.key.clone()))?;
+        property.value = value.trim_end_matches('\n').to_string();
+    }
+    Ok(property)
 }
 
 fn source(path: &Path) -> Source {
@@ -88,6 +105,7 @@ pub enum ParsePropertyError {
     Key(String),
     Value(String),
     File(String),
+    Command(String),
 }
 
 impl From<std::io::Error> for ParsePropertyError {
@@ -103,6 +121,7 @@ impl Display for ParsePropertyError {
             ParsePropertyError::Key(key) => write!(f, "Invalid key: {}", key),
             ParsePropertyError::Value(value) => write!(f, "Invalid value: {}", value),
             ParsePropertyError::File(file) => write!(f, "Invalid value: {}", file),
+            ParsePropertyError::Command(key) => write!(f, "Command assignment failed for variable: {key}"),
         }
     }
 }
