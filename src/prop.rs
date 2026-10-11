@@ -174,6 +174,28 @@ mod tests {
     }
 
     #[test]
+    fn assignments_run_once_in_order_and_reuse_the_resolved_value() -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let path: std::path::PathBuf = directory.path().join(".sec");
+        let marker: std::path::PathBuf = directory.path().join("calls");
+        std::fs::write(&path, format!(
+            "marker={}\nseed=first\nid=$(printf x >> \"$marker\"; printf '%s-generated' \"$seed\")\nseed=second\ncopy=$(printf '%s/%s' \"$id\" \"$seed\")",
+            marker.display()
+        ))?;
+
+        let properties: Vec<Property> = super::from_file(&path)?;
+        assert_eq!(properties[2].value(), "first-generated");
+        assert_eq!(properties[4].value(), "first-generated/second");
+        let rendered: String = crate::template::substitution(
+            "https://example.com/{{id}} {\"ref\":\"{{id}}\"} {{copy}}".to_string(),
+            properties, false, false, false,
+        ).map_err(|error| format!("{error:?}"))?;
+        assert_eq!(rendered, "https://example.com/first-generated {\"ref\":\"first-generated\"} first-generated/second");
+        assert_eq!(std::fs::read_to_string(marker)?, "x");
+        Ok(())
+    }
+
+    #[test]
     fn test_properties_sort_order() -> Result<(), ParsePropertyError> {
         let env_var = Property::new("key".to_string(), "env_var".to_string(), Source::EnvVar)?;
         let file_root = Property::new("key".to_string(), "file_root".to_string(), Source::File(0))?;
