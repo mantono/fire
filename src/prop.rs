@@ -73,15 +73,19 @@ pub fn from_file(path: &Path) -> Result<Vec<Property>, ParsePropertyError> {
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(Property::from_str)
-        .map(|prop| prop.and_then(|p| resolve_command(p.with_source(source))))
-        .collect()
+        .try_fold(Vec::new(), |mut properties: Vec<Property>, property| {
+            let resolved: Property = resolve_command(property?.with_source(source), &properties)?;
+            properties.push(resolved);
+            Ok(properties)
+        })
 }
 
-fn resolve_command(mut property: Property) -> Result<Property, ParsePropertyError> {
+fn resolve_command(mut property: Property, previous: &[Property]) -> Result<Property, ParsePropertyError> {
     if let Some(command) = property.value.strip_prefix("$(").and_then(|value| value.strip_suffix(')')) {
         let output: std::process::Output = std::process::Command::new("sh")
             .arg("-c")
             .arg(command)
+            .envs(previous.iter().map(|property| (property.key(), property.value())))
             .output()
             .map_err(|_| ParsePropertyError::Command(property.key.clone()))?;
         if !output.status.success() {
