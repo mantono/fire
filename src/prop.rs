@@ -142,6 +142,19 @@ mod tests {
     use super::{ParsePropertyError, Property};
 
     #[test]
+    fn command_assignment_is_resolved_when_file_is_loaded() -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let path: std::path::PathBuf = directory.path().join(".env");
+        std::fs::write(&path, "id=$(printf generated)")?;
+
+        let properties: Vec<Property> = super::from_file(&path)?;
+        assert_eq!(properties[0].key(), "id");
+        assert_eq!(properties[0].value(), "generated");
+        assert_eq!(properties[0].source, Source::File(path.components().count()));
+        Ok(())
+    }
+
+    #[test]
     fn test_properties_sort_order() -> Result<(), ParsePropertyError> {
         let env_var = Property::new("key".to_string(), "env_var".to_string(), Source::EnvVar)?;
         let file_root = Property::new("key".to_string(), "file_root".to_string(), Source::File(0))?;
