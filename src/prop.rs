@@ -223,6 +223,7 @@ mod tests {
             "fire_nonexistent_command_32",
             "printf '\\377'",
             "(",
+            "printf a)-$(printf b",
         ]
         .into_iter()
         .try_for_each(|command: &str| -> Result<(), Box<dyn std::error::Error>> {
