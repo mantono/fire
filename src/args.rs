@@ -100,7 +100,7 @@ pub struct Args {
     ///
     /// Skip $(command) assignments in all .env and .sec files without executing them.
     /// Other sources can still supply the variable; otherwise it is treated as missing.
-    #[clap(long = "no-shell")]
+    #[clap(short = 'S', long = "no-shell")]
     no_shell: bool,
 
     /// Set environment variable
