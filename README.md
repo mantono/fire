@@ -73,6 +73,40 @@ REGION=europe
 USERNAME="quoted-username"
 ```
 
+### Values from shell commands
+
+In `.env` and `.sec` files, a value can use `$(command)` to capture a shell command's standard output:
+
+```sh
+REGION=europe
+id=$(uuidgen)
+label=$(printf '%s-%s' "$REGION" "$id")
+```
+
+Fire resolves assignments once, from top to bottom, when it loads each file.
+Later commands can use earlier assignments from the same file.
+Every `{{id}}` in a request uses the same resolved value.
+Commands run even when a variable is unused or a higher-priority source overrides it.
+The existing variable-source priority does not change.
+
+After the existing removal of whitespace and surrounding quotes, Fire treats values starting with `$(` and ending with `)` as command assignments.
+Use a single `$(command)` as the whole value.
+Combined substitutions, such as `$(printf a)-$(printf b)`, are unsupported and can fail loading.
+Values that do not match these boundaries, such as `prefix-$(uuidgen)`, remain literal text.
+Static assignments, command-line values, and system environment values keep their existing behavior.
+Request templates do not execute commands.
+
+Commands use `sh -c` and run in Fire's current working directory.
+They inherit Fire's system environment, with earlier assignments from the same file applied on top.
+Assignments do not change Fire's system environment or carry over to commands in other files.
+Fire removes trailing newline characters from the output but preserves other whitespace and internal newlines.
+
+If a command cannot start, exits unsuccessfully, or returns output that is not valid UTF-8 text, Fire stops before sending the request.
+The error names the variable without including the command or its output.
+
+Only load environment and secret files that you trust.
+Their commands run automatically with your user permissions and can read secrets, modify files, or access the network.
+
 ## Additional Documentation
 See `fire --help` for more documentation on how to use the application.
 
