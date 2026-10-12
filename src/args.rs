@@ -221,7 +221,7 @@ impl Args {
         let end: PathBuf = request_file.canonicalize().unwrap().parent().unwrap().to_path_buf();
 
         let start: PathBuf = match giro::git_root(&end).expect("Resolve git root") {
-            Some(root) => root.parent().unwrap().to_path_buf(),
+            Some(root) => root,
             None => end.clone(),
         };
 
@@ -255,6 +255,56 @@ mod tests {
     use super::Args;
     use crate::prop::Property;
     use clap::Parser;
+
+    proptest::proptest! {
+        #![proptest_config(proptest::test_runner::Config::with_cases(16))]
+
+        #[test]
+        fn environment_loading_stays_within_repository(depth in 0usize..5) {
+            let directory: tempfile::TempDir = tempfile::tempdir().unwrap();
+            let root: PathBuf = directory.path().join("repository");
+            let status: std::process::ExitStatus = std::process::Command::new("git")
+                .args(["init", "--quiet"])
+                .arg(&root)
+                .status()
+                .unwrap();
+            proptest::prop_assert!(status.success());
+            let request_directory: PathBuf = (0..depth)
+                .fold(root.clone(), |path: PathBuf, index: usize| path.join(format!("level_{index}")));
+            std::fs::create_dir_all(&request_directory).unwrap();
+            let request: PathBuf = request_directory.join("request.yml");
+            std::fs::write(&request, "https://example.com").unwrap();
+            std::fs::write(root.join(".env"), "root_value=kept\nroot_command=$(printf generated)").unwrap();
+            std::fs::write(request_directory.join(".sec"), "request_value=kept").unwrap();
+            let filenames: [&str; 4] = [".env", ".sec", "development.env", "development.sec"];
+            filenames.iter().enumerate().try_for_each(|(index, filename)| -> std::io::Result<()> {
+                let marker: PathBuf = directory.path().join(format!("executed_{index}"));
+                std::fs::write(directory.path().join(filename), format!(
+                    "FIRE_PARENT_STATIC_32=outside\nFIRE_PARENT_COMMAND_32=$(printf x > '{}')",
+                    marker.display()
+                ))
+            }).unwrap();
+            let args: Args = Args::try_parse_from([
+                "fire", "--env", "development", request.to_str().unwrap()
+            ]).unwrap();
+            let properties: Vec<Property> = args.env().unwrap();
+            proptest::prop_assert!(filenames.iter().enumerate().all(|(index, _)| {
+                !directory.path().join(format!("executed_{index}")).exists()
+            }), "Parent commands must not execute");
+            proptest::prop_assert!(!properties.iter().any(|property| {
+                matches!(property.key(), "FIRE_PARENT_STATIC_32" | "FIRE_PARENT_COMMAND_32")
+            }), "Parent assignments must not load");
+            proptest::prop_assert!(properties.iter().any(|property| {
+                property.key() == "root_value" && property.value() == "kept"
+            }), "Repository root assignments must load");
+            proptest::prop_assert!(properties.iter().any(|property| {
+                property.key() == "root_command" && property.value() == "generated"
+            }), "Repository root commands must execute");
+            proptest::prop_assert!(properties.iter().any(|property| {
+                property.key() == "request_value" && property.value() == "kept"
+            }), "Request directory assignments must load");
+        }
+    }
 
     #[test]
     fn no_shell_skips_commands_in_all_loaded_files() -> Result<(), Box<dyn std::error::Error>> {
