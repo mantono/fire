@@ -65,21 +65,27 @@ impl PartialOrd for Property {
     }
 }
 
-pub fn from_file(path: &Path) -> Result<Vec<Property>, ParsePropertyError> {
+pub fn from_file(path: &Path, execute_shell: bool) -> Result<Vec<Property>, ParsePropertyError> {
     let content: String = std::fs::read_to_string(path)?;
     let source: Source = source(path);
 
     content
         .lines()
         .filter(|line| !line.trim().is_empty())
-        .map(|line| resolve_command(Property::from_str(line)?.with_source(source)))
+        .map(|line| Property::from_str(line).map(|property| property.with_source(source)))
+        .filter_map(|property| match property {
+            Ok(property) if !execute_shell && shell_command(property.value()).is_some() => None,
+            property => Some(property.and_then(resolve_command)),
+        })
         .collect()
 }
 
+fn shell_command(value: &str) -> Option<&str> {
+    value.strip_prefix("$(").and_then(|value| value.strip_suffix(')'))
+}
+
 fn resolve_command(mut property: Property) -> Result<Property, ParsePropertyError> {
-    if let Some(command) =
-        property.value.strip_prefix("$(").and_then(|value| value.strip_suffix(')'))
-    {
+    if let Some(command) = shell_command(property.value()) {
         let output: std::process::Output = std::process::Command::new("sh")
             .arg("-c")
             .arg(command)
@@ -170,7 +176,7 @@ mod tests {
         let path: std::path::PathBuf = directory.path().join(".env");
         std::fs::write(&path, "id=$(printf generated)")?;
 
-        let properties: Vec<Property> = super::from_file(&path)?;
+        let properties: Vec<Property> = super::from_file(&path, true)?;
         assert_eq!(properties[0].key(), "id");
         assert_eq!(properties[0].value(), "generated");
         assert_eq!(properties[0].source, Source::File(path.components().count()));
@@ -193,7 +199,7 @@ mod tests {
             ),
         )?;
 
-        let properties: Vec<Property> = super::from_file(&path)?;
+        let properties: Vec<Property> = super::from_file(&path, true)?;
         assert_eq!(properties[0].value(), "generated");
         assert_eq!(properties[1].value(), "x");
         let rendered: String = crate::template::substitution(
@@ -222,7 +228,7 @@ mod tests {
                 std::fs::write(&path, format!(
                     "PATH={inherited_path}:/fire-file-only-path\n{key}=static-file-value\nstatic_copy=$(printf '%s' \"${key}\")\n{key}=$(printf command-file-value)\ncommand_copy=$(printf '%s' \"${key}\")\npath=$(printf '%s' \"$PATH\")"
                 ))?;
-                let properties: Vec<Property> = super::from_file(&path)?;
+                let properties: Vec<Property> = super::from_file(&path, true)?;
                 assert_eq!(properties[2].value(), inherited_value);
                 assert_eq!(properties[4].value(), inherited_value);
                 assert_eq!(properties[5].value(), inherited_path);
@@ -251,7 +257,7 @@ mod tests {
                 &path,
                 format!("token=$({command})\nlater=$(printf x > '{}')", marker.display()),
             )?;
-            let error: ParsePropertyError = super::from_file(&path).unwrap_err();
+            let error: ParsePropertyError = super::from_file(&path, true).unwrap_err();
             assert!(matches!(&error, ParsePropertyError::Command(key) if key == "token"));
             assert_eq!(error.to_string(), "Command assignment failed for variable: token");
             assert!(!format!("{error:?}").contains("secret"));
@@ -267,7 +273,7 @@ mod tests {
         let directory: tempfile::TempDir = tempfile::tempdir()?;
         let path: std::path::PathBuf = directory.path().join("development.env");
         std::fs::write(&path, "value=\"$(printf '%s' \"$(printf 'hello world')\" | tr 'a-z' 'A-Z')\"\nempty=$(printf '')\npath=$(printf '%s' \"$PATH\")")?;
-        let properties: Vec<Property> = super::from_file(&path)?;
+        let properties: Vec<Property> = super::from_file(&path, true)?;
         assert_eq!(properties[0].value(), "HELLO WORLD");
         assert_eq!(properties[1].value(), "");
         assert_eq!(properties[2].value(), std::env::var("PATH")?);
@@ -279,7 +285,7 @@ mod tests {
         let directory: tempfile::TempDir = tempfile::tempdir()?;
         let path: std::path::PathBuf = directory.path().join(".env");
         std::fs::write(&path, "foo=bar\nquoted='some value'\nembedded=prefix-$(printf generated)\nincomplete=$(printf generated\n")?;
-        let properties: Vec<Property> = super::from_file(&path)?;
+        let properties: Vec<Property> = super::from_file(&path, true)?;
         assert_eq!(
             properties.iter().map(Property::value).collect::<Vec<&str>>(),
             vec![
@@ -302,7 +308,7 @@ mod tests {
         let directory: tempfile::TempDir = tempfile::tempdir()?;
         let path: std::path::PathBuf = directory.path().join(".env");
         std::fs::write(&path, "id=$(printf generated)")?;
-        let mut properties: Vec<Property> = super::from_file(&path)?;
+        let mut properties: Vec<Property> = super::from_file(&path, true)?;
         properties.push(Property::new("id".to_string(), "system".to_string(), Source::EnvVar)?);
         let render = |properties: Vec<Property>| {
             crate::template::substitution("{{id}}".to_string(), properties, false, false, false)
@@ -316,6 +322,26 @@ mod tests {
 
     proptest::proptest! {
         #[test]
+        fn disabling_shell_is_equivalent_to_removing_command_assignments(
+            commands in proptest::collection::vec("[A-Za-z0-9 _=$(){};|&<>]{0,64}", 1..8),
+        ) {
+            let directory: tempfile::TempDir = tempfile::tempdir().unwrap();
+            let path: std::path::PathBuf = directory.path().join(".sec");
+            let static_lines: String = commands.iter().enumerate()
+                .map(|(index, command)| format!("literal_{index}=prefix-$({command})\n"))
+                .collect();
+            let command_lines: String = commands.iter().enumerate()
+                .map(|(index, command)| format!("dynamic_{index}=\"$({command})\"\n"))
+                .collect();
+            let literals: &str = "static_value=kept\nincomplete=$(printf incomplete\n";
+            std::fs::write(&path, format!("{command_lines}{literals}{static_lines}{command_lines}")).unwrap();
+            let disabled: Vec<Property> = super::from_file(&path, false).unwrap();
+            std::fs::write(&path, format!("{literals}{static_lines}")).unwrap();
+            let omitted: Vec<Property> = super::from_file(&path, true).unwrap();
+            proptest::prop_assert_eq!(disabled, omitted);
+        }
+
+        #[test]
         fn command_output_preserves_data_and_only_strips_trailing_newlines(
             payload in "[A-Za-z0-9 _=$(){};|&<>]{0,64}",
             newlines in 0usize..6,
@@ -327,7 +353,7 @@ mod tests {
             std::fs::write(&path, format!(
                 "payload=\"{value}\"\nvalue=$(printf '%s\\n%s{suffix}' '{value}' '{value}')"
             )).unwrap();
-            let properties: Vec<Property> = super::from_file(&path).unwrap();
+            let properties: Vec<Property> = super::from_file(&path, true).unwrap();
             proptest::prop_assert_eq!(properties[0].value(), value.as_str());
             proptest::prop_assert_eq!(properties[1].value(), format!("{value}\n{value}"));
         }

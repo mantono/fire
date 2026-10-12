@@ -96,6 +96,13 @@ pub struct Args {
     #[clap(short, long)]
     env: Vec<String>,
 
+    /// Disable shell assignments in environment files
+    ///
+    /// Skip $(command) assignments in all .env and .sec files without executing them.
+    /// Other sources can still supply the variable; otherwise it is treated as missing.
+    #[clap(long = "no-shell")]
+    no_shell: bool,
+
     /// Set environment variable
     ///
     /// Override or set a specific environment variable in KEY=VALUE format. Would have same effect
@@ -188,7 +195,7 @@ impl Args {
         let file_envs: Result<Vec<Vec<Property>>, ParsePropertyError> =
             Self::find_env_files(&self.file, self.env.clone())
                 .into_iter()
-                .map(|file| prop::from_file(&file))
+                .map(|file| prop::from_file(&file, !self.no_shell))
                 .collect();
 
         file_envs.map(|vec| vec.into_iter().flatten().collect())
@@ -238,5 +245,105 @@ impl Args {
             .inspect(|e| log::debug!("Found environments file {:?}", e))
             .map(|e| e.into_path())
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::Args;
+    use crate::prop::Property;
+    use clap::Parser;
+
+    #[test]
+    fn no_shell_skips_commands_in_all_loaded_files() -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let request: PathBuf = directory.path().join("request.yml");
+        let marker: PathBuf = directory.path().join("executed");
+        std::fs::write(&request, "https://example.com")?;
+        [".env", ".sec", "development.env", "development.sec"]
+            .into_iter()
+            .try_for_each(|filename: &str| -> std::io::Result<()> {
+                std::fs::write(
+                    directory.path().join(filename),
+                    format!(
+                        "static_value=kept\ndynamic_value=\"$(printf x >> '{}'; exit 7)\"",
+                        marker.display()
+                    ),
+                )
+            })?;
+        let args: Args = Args::try_parse_from([
+            "fire",
+            "--no-shell",
+            "--env",
+            "development",
+            request.to_str().unwrap(),
+        ])?;
+        let properties: Vec<Property> = args.env()?;
+        assert_eq!(
+            properties.iter().filter(|property| property.key() == "static_value").count(),
+            4
+        );
+        assert!(!properties.iter().any(|property| property.key() == "dynamic_value"));
+        assert!(!marker.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn shell_assignments_remain_enabled_by_default() -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let request: PathBuf = directory.path().join("request.yml");
+        std::fs::write(&request, "https://example.com")?;
+        std::fs::write(directory.path().join(".env"), "dynamic_value=$(printf generated)")?;
+        let args: Args = Args::try_parse_from(["fire", request.to_str().unwrap()])?;
+        let properties: Vec<Property> = args.env()?;
+        assert!(properties.iter().any(|property| {
+            property.key() == "dynamic_value" && property.value() == "generated"
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn no_shell_keeps_fallback_values_and_reports_missing_values(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let request: PathBuf = directory.path().join("request.yml");
+        let system_key: &str = "PATH";
+        let system_value: String = std::env::var(system_key)?;
+        std::fs::write(&request, "https://example.com")?;
+        std::fs::write(
+            directory.path().join(".env"),
+            format!("{system_key}=$(exit 7)\nstatic_value=fallback\nstatic_value=$(exit 7)\nargument_value=$(exit 7)\nFIRE_NO_SHELL_MISSING_VALUE=$(exit 7)"),
+        )?;
+        let args: Args = Args::try_parse_from([
+            "fire",
+            "--no-shell",
+            "--variable",
+            "argument_value=$(printf literal)",
+            request.to_str().unwrap(),
+        ])?;
+        let properties: Vec<Property> = args.env()?;
+        let rendered: String = crate::template::substitution(
+            format!("{{{{{system_key}}}}}|{{{{static_value}}}}|{{{{argument_value}}}}"),
+            properties.clone(),
+            false,
+            false,
+            false,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        assert_eq!(rendered, format!("{system_value}|fallback|$(printf literal)"));
+        let error: crate::template::SubstitutionError = crate::template::substitution(
+            "{{FIRE_NO_SHELL_MISSING_VALUE}}".to_string(),
+            properties,
+            false,
+            false,
+            false,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(error, crate::template::SubstitutionError::MissingValue(key) if key == "FIRE_NO_SHELL_MISSING_VALUE")
+        );
+        Ok(())
     }
 }

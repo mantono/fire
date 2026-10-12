@@ -104,8 +104,19 @@ Fire removes trailing newline characters from the output but preserves other whi
 If a command cannot start, exits unsuccessfully, or returns output that is not valid UTF-8 text, Fire stops before sending the request.
 The error names the variable without including the command or its output.
 
+To disable shell execution in all loaded `.env` and `.sec` files, use `--no-shell`:
+
+```sh
+fire my_request.yml --no-shell
+```
+
+Fire skips command assignments as if they were absent from the files.
+Other sources can still supply those variables.
+If no value is available, Fire reports a missing variable or prompts for a value in interactive mode.
+Static assignments and literal values remain unchanged.
+
 Only load environment and secret files that you trust.
-Their commands run automatically with your user permissions and can read secrets, modify files, or access the network.
+Without `--no-shell`, their commands run automatically with your user permissions and can read secrets, modify files, or access the network.
 
 ## Additional Documentation
 See `fire --help` for more documentation on how to use the application.
