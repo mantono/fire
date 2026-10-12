@@ -89,6 +89,7 @@ fn resolve_command(mut property: Property) -> Result<Property, ParsePropertyErro
         let output: std::process::Output = std::process::Command::new("sh")
             .arg("-c")
             .arg(command)
+            .stderr(std::process::Stdio::null())
             .output()
             .map_err(|_| ParsePropertyError::Command(property.key.clone()))?;
         if !output.status.success() {
@@ -321,6 +322,30 @@ mod tests {
     }
 
     proptest::proptest! {
+        #[test]
+        fn noisy_stderr_is_discarded_without_changing_stdout_or_exit_status(
+            diagnostic_bytes in 65536usize..131073,
+            exit_status in 1u8..=255,
+        ) {
+            let directory: tempfile::TempDir = tempfile::tempdir().unwrap();
+            let path: std::path::PathBuf = directory.path().join(".sec");
+            // P9R: output() used to buffer stderr even though Fire never uses it.
+            // Noisy commands could exhaust memory while returning a tiny value.
+            // Check that stderr goes directly to /dev/null: checking only the
+            // returned value would also pass with the old, unbounded buffer.
+            let command: String = format!(
+                "test /dev/stderr -ef /dev/null || exit 99; printf '%{diagnostic_bytes}s' diagnostic >&2; printf token"
+            );
+            std::fs::write(&path, format!("token=$({command})")).unwrap();
+            let properties: Vec<Property> = super::from_file(&path, true).unwrap();
+            proptest::prop_assert_eq!(properties[0].value(), "token");
+
+            // Discarding diagnostics must not hide an unsuccessful exit.
+            std::fs::write(&path, format!("token=$({command}; exit {exit_status})")).unwrap();
+            let error: ParsePropertyError = super::from_file(&path, true).unwrap_err();
+            proptest::prop_assert!(matches!(error, ParsePropertyError::Command(key) if key == "token"));
+        }
+
         #[test]
         fn disabling_shell_is_equivalent_to_removing_command_assignments(
             commands in proptest::collection::vec("[A-Za-z0-9 _=$(){};|&<>]{0,64}", 1..8),
