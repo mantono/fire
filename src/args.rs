@@ -359,8 +359,11 @@ mod tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let directory: tempfile::TempDir = tempfile::tempdir()?;
         let request: PathBuf = directory.path().join("request.yml");
-        let system_key: &str = "PATH";
-        let system_value: String = std::env::var(system_key)?;
+        // Windows lookup accepts PATH even when enumeration stores Path.
+        // Templates deliberately match the enumerated name exactly.
+        let (system_key, system_value): (String, String) = std::env::vars()
+            .find(|(key, _)| key.eq_ignore_ascii_case("PATH"))
+            .ok_or("Missing system PATH variable")?;
         std::fs::write(&request, "https://example.com")?;
         std::fs::write(
             directory.path().join(".env"),
