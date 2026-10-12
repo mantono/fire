@@ -216,11 +216,22 @@ mod tests {
         Ok(())
     }
 
+    fn shell_path() -> Result<String, Box<dyn std::error::Error>> {
+        // Git Bash converts native Windows PATH entries and adds shell paths.
+        let output: std::process::Output = std::process::Command::new("sh")
+            .args(["-c", "printf '%s' \"$PATH\""])
+            .output()?;
+        if !output.status.success() {
+            return Err("Failed to read shell PATH".into());
+        }
+        Ok(String::from_utf8(output.stdout)?)
+    }
+
     #[test]
     fn commands_inherit_system_values_not_earlier_file_assignments(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let directory: tempfile::TempDir = tempfile::tempdir()?;
-        let inherited_path: String = std::env::var("PATH")?;
+        let inherited_path: String = shell_path()?;
         let key: &str = "FIRE_TEST_EARLIER_ASSIGNMENT_32";
         let inherited_value: String = std::env::var(key).unwrap_or_default();
         [".env", ".sec"].into_iter().try_for_each(
@@ -277,7 +288,7 @@ mod tests {
         let properties: Vec<Property> = super::from_file(&path, true)?;
         assert_eq!(properties[0].value(), "HELLO WORLD");
         assert_eq!(properties[1].value(), "");
-        assert_eq!(properties[2].value(), std::env::var("PATH")?);
+        assert_eq!(properties[2].value(), shell_path()?);
         Ok(())
     }
 
