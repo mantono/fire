@@ -80,11 +80,11 @@ In `.env` and `.sec` files, a value can use `$(command)` to capture a shell comm
 ```sh
 REGION=europe
 id=$(uuidgen)
-label=$(printf '%s-%s' "$REGION" "$id")
+label=$(printf '%s' 'request-label')
 ```
 
 Fire resolves assignments once, from top to bottom, when it loads each file.
-Later commands can use earlier assignments from the same file.
+Commands cannot reference values assigned earlier in the same file.
 Every `{{id}}` in a request uses the same resolved value.
 Commands run even when a variable is unused or a higher-priority source overrides it.
 The existing variable-source priority does not change.
@@ -97,8 +97,8 @@ Static assignments, command-line values, and system environment values keep thei
 Request templates do not execute commands.
 
 Commands use `sh -c` and run in Fire's current working directory.
-They inherit Fire's system environment, with earlier assignments from the same file applied on top.
-Assignments do not change Fire's system environment or carry over to commands in other files.
+They inherit only Fire's system environment. File assignments do not override inherited values.
+Assignments do not change Fire's system environment or carry over to commands in the same file or other files.
 Fire removes trailing newline characters from the output but preserves other whitespace and internal newlines.
 
 If a command cannot start, exits unsuccessfully, or returns output that is not valid UTF-8 text, Fire stops before sending the request.

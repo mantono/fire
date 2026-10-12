@@ -72,25 +72,17 @@ pub fn from_file(path: &Path) -> Result<Vec<Property>, ParsePropertyError> {
     content
         .lines()
         .filter(|line| !line.trim().is_empty())
-        .map(Property::from_str)
-        .try_fold(Vec::new(), |mut properties: Vec<Property>, property| {
-            let resolved: Property = resolve_command(property?.with_source(source), &properties)?;
-            properties.push(resolved);
-            Ok(properties)
-        })
+        .map(|line| resolve_command(Property::from_str(line)?.with_source(source)))
+        .collect()
 }
 
-fn resolve_command(
-    mut property: Property,
-    previous: &[Property],
-) -> Result<Property, ParsePropertyError> {
+fn resolve_command(mut property: Property) -> Result<Property, ParsePropertyError> {
     if let Some(command) =
         property.value.strip_prefix("$(").and_then(|value| value.strip_suffix(')'))
     {
         let output: std::process::Output = std::process::Command::new("sh")
             .arg("-c")
             .arg(command)
-            .envs(previous.iter().map(|property| (property.key(), property.value())))
             .output()
             .map_err(|_| ParsePropertyError::Command(property.key.clone()))?;
         if !output.status.success() {
@@ -191,14 +183,19 @@ mod tests {
         let directory: tempfile::TempDir = tempfile::tempdir()?;
         let path: std::path::PathBuf = directory.path().join(".sec");
         let marker: std::path::PathBuf = directory.path().join("calls");
-        std::fs::write(&path, format!(
-            "marker={}\nseed=first\nid=$(printf x >> \"$marker\"; printf '%s-generated' \"$seed\")\nseed=second\ncopy=$(printf '%s/%s' \"$id\" \"$seed\")",
-            marker.display()
-        ))?;
+        std::fs::write(
+            &path,
+            format!(
+                "id=$(printf x >> '{}'; printf generated)\ncopy=$(cat '{}'; printf y >> '{}')",
+                marker.display(),
+                marker.display(),
+                marker.display()
+            ),
+        )?;
 
         let properties: Vec<Property> = super::from_file(&path)?;
-        assert_eq!(properties[2].value(), "first-generated");
-        assert_eq!(properties[4].value(), "first-generated/second");
+        assert_eq!(properties[0].value(), "generated");
+        assert_eq!(properties[1].value(), "x");
         let rendered: String = crate::template::substitution(
             "https://example.com/{{id}} {\"ref\":\"{{id}}\"} {{copy}}".to_string(),
             properties,
@@ -207,8 +204,31 @@ mod tests {
             false,
         )
         .map_err(|error| format!("{error:?}"))?;
-        assert_eq!(rendered, "https://example.com/first-generated {\"ref\":\"first-generated\"} first-generated/second");
-        assert_eq!(std::fs::read_to_string(marker)?, "x");
+        assert_eq!(rendered, "https://example.com/generated {\"ref\":\"generated\"} x");
+        assert_eq!(std::fs::read_to_string(marker)?, "xy");
+        Ok(())
+    }
+
+    #[test]
+    fn commands_inherit_system_values_not_earlier_file_assignments(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let inherited_path: String = std::env::var("PATH")?;
+        let key: &str = "FIRE_TEST_EARLIER_ASSIGNMENT_32";
+        let inherited_value: String = std::env::var(key).unwrap_or_default();
+        [".env", ".sec"].into_iter().try_for_each(
+            |filename: &str| -> Result<(), Box<dyn std::error::Error>> {
+                let path: std::path::PathBuf = directory.path().join(filename);
+                std::fs::write(&path, format!(
+                    "PATH={inherited_path}:/fire-file-only-path\n{key}=static-file-value\nstatic_copy=$(printf '%s' \"${key}\")\n{key}=$(printf command-file-value)\ncommand_copy=$(printf '%s' \"${key}\")\npath=$(printf '%s' \"$PATH\")"
+                ))?;
+                let properties: Vec<Property> = super::from_file(&path)?;
+                assert_eq!(properties[2].value(), inherited_value);
+                assert_eq!(properties[4].value(), inherited_value);
+                assert_eq!(properties[5].value(), inherited_path);
+                Ok(())
+            },
+        )?;
         Ok(())
     }
 
@@ -229,10 +249,7 @@ mod tests {
         .try_for_each(|command: &str| -> Result<(), Box<dyn std::error::Error>> {
             std::fs::write(
                 &path,
-                format!(
-                    "marker={}\ntoken=$({command})\nlater=$(printf x > \"$marker\")",
-                    marker.display()
-                ),
+                format!("token=$({command})\nlater=$(printf x > '{}')", marker.display()),
             )?;
             let error: ParsePropertyError = super::from_file(&path).unwrap_err();
             assert!(matches!(&error, ParsePropertyError::Command(key) if key == "token"));
@@ -308,7 +325,7 @@ mod tests {
             let value: String = format!("  start-{payload}-end  ");
             let suffix: String = "\\n".repeat(newlines);
             std::fs::write(&path, format!(
-                "payload=\"{value}\"\nvalue=$(printf '%s\\n%s{suffix}' \"$payload\" \"$payload\")"
+                "payload=\"{value}\"\nvalue=$(printf '%s\\n%s{suffix}' '{value}' '{value}')"
             )).unwrap();
             let properties: Vec<Property> = super::from_file(&path).unwrap();
             proptest::prop_assert_eq!(properties[0].value(), value.as_str());
