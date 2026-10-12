@@ -342,10 +342,16 @@ mod tests {
             let path: std::path::PathBuf = directory.path().join(".sec");
             // P9R: output() used to buffer stderr even though Fire never uses it.
             // Noisy commands could exhaust memory while returning a tiny value.
-            // Check that stderr goes directly to /dev/null: checking only the
-            // returned value would also pass with the old, unbounded buffer.
+            // On Unix, also verify device identity: checking only the returned
+            // value would pass with the old, unbounded buffer. Windows uses NUL,
+            // which Git Bash cannot identify through these Unix device paths.
+            let device_check: &str = if cfg!(unix) {
+                "test /dev/stderr -ef /dev/null || exit 99; "
+            } else {
+                ""
+            };
             let command: String = format!(
-                "test /dev/stderr -ef /dev/null || exit 99; printf '%{diagnostic_bytes}s' diagnostic >&2; printf token"
+                "{device_check}printf '%{diagnostic_bytes}s' diagnostic >&2; printf token"
             );
             std::fs::write(&path, format!("token=$({command})")).unwrap();
             let properties: Vec<Property> = super::from_file(&path, true).unwrap();
