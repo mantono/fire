@@ -73,6 +73,51 @@ REGION=europe
 USERNAME="quoted-username"
 ```
 
+### Values from shell commands
+
+In `.env` and `.sec` files, a value can use `$(command)` to capture a shell command's standard output:
+
+```sh
+REGION=europe
+id=$(uuidgen)
+label=$(printf '%s' 'request-label')
+```
+
+Fire resolves assignments once, from top to bottom, when it loads each file.
+Commands cannot reference values assigned earlier in the same file.
+Every `{{id}}` in a request uses the same resolved value.
+Commands run even when a variable is unused or a higher-priority source overrides it.
+The existing variable-source priority does not change.
+
+After the existing removal of whitespace and surrounding quotes, Fire treats values starting with `$(` and ending with `)` as command assignments.
+Use a single `$(command)` as the whole value.
+Combined substitutions, such as `$(printf a)-$(printf b)`, are unsupported and can fail loading.
+Values that do not match these boundaries, such as `prefix-$(uuidgen)`, remain literal text.
+Static assignments, command-line values, and system environment values keep their existing behavior.
+Request templates do not execute commands.
+
+Commands use `sh -c` and run in Fire's current working directory.
+They inherit only Fire's system environment. File assignments do not override inherited values.
+Assignments do not change Fire's system environment or carry over to commands in the same file or other files.
+Fire removes trailing newline characters from the output but preserves other whitespace and internal newlines.
+
+If a command cannot start, exits unsuccessfully, or returns output that is not valid UTF-8 text, Fire stops before sending the request.
+The error names the variable without including the command or its output.
+
+To disable shell execution in all loaded `.env` and `.sec` files, use `--no-shell`:
+
+```sh
+fire my_request.yml --no-shell
+```
+
+Fire skips command assignments as if they were absent from the files.
+Other sources can still supply those variables.
+If no value is available, Fire reports a missing variable or prompts for a value in interactive mode.
+Static assignments and literal values remain unchanged.
+
+Only load environment and secret files that you trust.
+Without `--no-shell`, their commands run automatically with your user permissions and can read secrets, modify files, or access the network.
+
 ## Additional Documentation
 See `fire --help` for more documentation on how to use the application.
 

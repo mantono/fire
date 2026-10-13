@@ -96,6 +96,13 @@ pub struct Args {
     #[clap(short, long)]
     env: Vec<String>,
 
+    /// Disable shell assignments in environment files
+    ///
+    /// Skip $(command) assignments in all .env and .sec files without executing them.
+    /// Other sources can still supply the variable; otherwise it is treated as missing.
+    #[clap(short = 'S', long = "no-shell")]
+    no_shell: bool,
+
     /// Set environment variable
     ///
     /// Override or set a specific environment variable in KEY=VALUE format. Would have same effect
@@ -188,7 +195,7 @@ impl Args {
         let file_envs: Result<Vec<Vec<Property>>, ParsePropertyError> =
             Self::find_env_files(&self.file, self.env.clone())
                 .into_iter()
-                .map(|file| prop::from_file(&file))
+                .map(|file| prop::from_file(&file, !self.no_shell))
                 .collect();
 
         file_envs.map(|vec| vec.into_iter().flatten().collect())
@@ -214,7 +221,7 @@ impl Args {
         let end: PathBuf = request_file.canonicalize().unwrap().parent().unwrap().to_path_buf();
 
         let start: PathBuf = match giro::git_root(&end).expect("Resolve git root") {
-            Some(root) => root.parent().unwrap().to_path_buf(),
+            Some(root) => root,
             None => end.clone(),
         };
 
@@ -238,5 +245,158 @@ impl Args {
             .inspect(|e| log::debug!("Found environments file {:?}", e))
             .map(|e| e.into_path())
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::Args;
+    use crate::prop::Property;
+    use clap::Parser;
+
+    proptest::proptest! {
+        #![proptest_config(proptest::test_runner::Config::with_cases(16))]
+
+        #[test]
+        fn environment_loading_stays_within_repository(depth in 0usize..5) {
+            let directory: tempfile::TempDir = tempfile::tempdir().unwrap();
+            let root: PathBuf = directory.path().join("repository");
+            let status: std::process::ExitStatus = std::process::Command::new("git")
+                .args(["init", "--quiet"])
+                .arg(&root)
+                .status()
+                .unwrap();
+            proptest::prop_assert!(status.success());
+            let request_directory: PathBuf = (0..depth)
+                .fold(root.clone(), |path: PathBuf, index: usize| path.join(format!("level_{index}")));
+            std::fs::create_dir_all(&request_directory).unwrap();
+            let request: PathBuf = request_directory.join("request.yml");
+            std::fs::write(&request, "https://example.com").unwrap();
+            std::fs::write(root.join(".env"), "root_value=kept\nroot_command=$(printf generated)").unwrap();
+            std::fs::write(request_directory.join(".sec"), "request_value=kept").unwrap();
+            let filenames: [&str; 4] = [".env", ".sec", "development.env", "development.sec"];
+            filenames.iter().enumerate().try_for_each(|(index, filename)| -> std::io::Result<()> {
+                let marker: PathBuf = directory.path().join(format!("executed_{index}"));
+                std::fs::write(directory.path().join(filename), format!(
+                    "FIRE_PARENT_STATIC_32=outside\nFIRE_PARENT_COMMAND_32=$(printf x > '{}')",
+                    marker.display()
+                ))
+            }).unwrap();
+            let args: Args = Args::try_parse_from([
+                "fire", "--env", "development", request.to_str().unwrap()
+            ]).unwrap();
+            let properties: Vec<Property> = args.env().unwrap();
+            proptest::prop_assert!(filenames.iter().enumerate().all(|(index, _)| {
+                !directory.path().join(format!("executed_{index}")).exists()
+            }), "Parent commands must not execute");
+            proptest::prop_assert!(!properties.iter().any(|property| {
+                matches!(property.key(), "FIRE_PARENT_STATIC_32" | "FIRE_PARENT_COMMAND_32")
+            }), "Parent assignments must not load");
+            proptest::prop_assert!(properties.iter().any(|property| {
+                property.key() == "root_value" && property.value() == "kept"
+            }), "Repository root assignments must load");
+            proptest::prop_assert!(properties.iter().any(|property| {
+                property.key() == "root_command" && property.value() == "generated"
+            }), "Repository root commands must execute");
+            proptest::prop_assert!(properties.iter().any(|property| {
+                property.key() == "request_value" && property.value() == "kept"
+            }), "Request directory assignments must load");
+        }
+    }
+
+    #[test]
+    fn no_shell_skips_commands_in_all_loaded_files() -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let request: PathBuf = directory.path().join("request.yml");
+        let marker: PathBuf = directory.path().join("executed");
+        std::fs::write(&request, "https://example.com")?;
+        [".env", ".sec", "development.env", "development.sec"]
+            .into_iter()
+            .try_for_each(|filename: &str| -> std::io::Result<()> {
+                std::fs::write(
+                    directory.path().join(filename),
+                    format!(
+                        "static_value=kept\ndynamic_value=\"$(printf x >> '{}'; exit 7)\"",
+                        marker.display()
+                    ),
+                )
+            })?;
+        let args: Args = Args::try_parse_from([
+            "fire",
+            "--no-shell",
+            "--env",
+            "development",
+            request.to_str().unwrap(),
+        ])?;
+        let properties: Vec<Property> = args.env()?;
+        assert_eq!(
+            properties.iter().filter(|property| property.key() == "static_value").count(),
+            4
+        );
+        assert!(!properties.iter().any(|property| property.key() == "dynamic_value"));
+        assert!(!marker.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn shell_assignments_remain_enabled_by_default() -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let request: PathBuf = directory.path().join("request.yml");
+        std::fs::write(&request, "https://example.com")?;
+        std::fs::write(directory.path().join(".env"), "dynamic_value=$(printf generated)")?;
+        let args: Args = Args::try_parse_from(["fire", request.to_str().unwrap()])?;
+        let properties: Vec<Property> = args.env()?;
+        assert!(properties.iter().any(|property| {
+            property.key() == "dynamic_value" && property.value() == "generated"
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn no_shell_keeps_fallback_values_and_reports_missing_values(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let directory: tempfile::TempDir = tempfile::tempdir()?;
+        let request: PathBuf = directory.path().join("request.yml");
+        // Windows lookup accepts PATH even when enumeration stores Path.
+        // Templates deliberately match the enumerated name exactly.
+        let (system_key, system_value): (String, String) = std::env::vars()
+            .find(|(key, _)| key.eq_ignore_ascii_case("PATH"))
+            .ok_or("Missing system PATH variable")?;
+        std::fs::write(&request, "https://example.com")?;
+        std::fs::write(
+            directory.path().join(".env"),
+            format!("{system_key}=$(exit 7)\nstatic_value=fallback\nstatic_value=$(exit 7)\nargument_value=$(exit 7)\nFIRE_NO_SHELL_MISSING_VALUE=$(exit 7)"),
+        )?;
+        let args: Args = Args::try_parse_from([
+            "fire",
+            "--no-shell",
+            "--variable",
+            "argument_value=$(printf literal)",
+            request.to_str().unwrap(),
+        ])?;
+        let properties: Vec<Property> = args.env()?;
+        let rendered: String = crate::template::substitution(
+            format!("{{{{{system_key}}}}}|{{{{static_value}}}}|{{{{argument_value}}}}"),
+            properties.clone(),
+            false,
+            false,
+            false,
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        assert_eq!(rendered, format!("{system_value}|fallback|$(printf literal)"));
+        let error: crate::template::SubstitutionError = crate::template::substitution(
+            "{{FIRE_NO_SHELL_MISSING_VALUE}}".to_string(),
+            properties,
+            false,
+            false,
+            false,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(error, crate::template::SubstitutionError::MissingValue(key) if key == "FIRE_NO_SHELL_MISSING_VALUE")
+        );
+        Ok(())
     }
 }

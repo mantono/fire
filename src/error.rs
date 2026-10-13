@@ -46,6 +46,7 @@ impl Display for FireError {
                 prop::ParsePropertyError::Key(key) => format!("Invalid key in environments file: {key}"),
                 prop::ParsePropertyError::Value(value) => format!("Invalid value in environments file: {value}"),
                 prop::ParsePropertyError::File(file) => format!("Invalid environments file: {file}"),
+                prop::ParsePropertyError::Command(key) => format!("Command assignment failed for variable: {key}"),
             },
             FireError::Other(err) => format!("Error: {err}"),
         };
